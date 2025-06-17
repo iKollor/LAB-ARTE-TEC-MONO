@@ -1,0 +1,2 @@
+src/scripts/pixi/ianacimiento.ts
+src/scripts/pixi/timeline.ts
