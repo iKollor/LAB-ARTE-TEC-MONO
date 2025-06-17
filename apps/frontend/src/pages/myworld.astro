@@ -1,0 +1,33 @@
+---
+// src/pages/myworld.astro
+---
+
+<style>
+    html,
+    body {
+        overflow-x: hidden;
+        overflow-y: hidden;
+        margin: 0;
+    }
+</style>
+
+<div id="canvas-container" style="width: 100%; height: 100%;"></div>
+
+<script>
+    import { init as pixiInit } from "../scripts/pixi/app";
+    import socket from "../scripts/socket";
+
+    let showNacimiento = false;
+    socket.on("world-assigned", (data) => {
+        showNacimiento = !!data.isOrigin;
+        if (data.isOrigin) {
+            console.log("¡Eres el primer mundo creado! La IA nacerá aquí. ID:", data.worldId);
+        } else {
+            console.log("Mundo asignado desde myworld.astro:", data.worldId);
+        }
+        const container = document.getElementById("canvas-container");
+        if (container) {
+            pixiInit(container);
+        }
+    });
+</script>

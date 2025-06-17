@@ -1,0 +1,60 @@
+{ "frames": [
+   {
+    "filename": "0",
+    "frame": { "x": 0, "y": 0, "w": 32, "h": 192 },
+    "rotated": false,
+    "trimmed": false,
+    "spriteSourceSize": { "x": 0, "y": 0, "w": 32, "h": 192 },
+    "sourceSize": { "w": 32, "h": 192 },
+    "duration": 150
+   },
+   {
+    "filename": "1",
+    "frame": { "x": 32, "y": 0, "w": 32, "h": 192 },
+    "rotated": false,
+    "trimmed": false,
+    "spriteSourceSize": { "x": 0, "y": 0, "w": 32, "h": 192 },
+    "sourceSize": { "w": 32, "h": 192 },
+    "duration": 150
+   },
+   {
+    "filename": "2",
+    "frame": { "x": 64, "y": 0, "w": 32, "h": 96 },
+    "rotated": false,
+    "trimmed": true,
+    "spriteSourceSize": { "x": 0, "y": 96, "w": 32, "h": 96 },
+    "sourceSize": { "w": 32, "h": 192 },
+    "duration": 150
+   },
+   {
+    "filename": "3",
+    "frame": { "x": 96, "y": 0, "w": 32, "h": 96 },
+    "rotated": false,
+    "trimmed": true,
+    "spriteSourceSize": { "x": 0, "y": 96, "w": 32, "h": 96 },
+    "sourceSize": { "w": 32, "h": 192 },
+    "duration": 150
+   }
+ ],
+ "meta": {
+  "app": "https://www.aseprite.org/",
+  "version": "1.3.14.2-x64",
+  "image": "prototype_character.png",
+  "format": "RGBA8888",
+  "size": { "w": 128, "h": 192 },
+  "scale": "1",
+  "frameTags": [
+  ],
+  "layers": [
+   { "name": "Character", "opacity": 255, "blendMode": "normal", "color": "#ad99acff" }
+  ],
+  "slices": [
+   { "name": "Idle_South", "color": "#0000ffff", "keys": [{ "frame": 0, "bounds": {"x": 0, "y": 0, "w": 32, "h": 32 } }, { "frame": 1, "bounds": {"x": 0, "y": 0, "w": 32, "h": 32 } }, { "frame": 2, "bounds": {"x": 0, "y": 0, "w": 32, "h": 32 } }, { "frame": 3, "bounds": {"x": 0, "y": 0, "w": 32, "h": 32 } }] },
+   { "name": "Idle", "color": "#0000ffff", "keys": [{ "frame": 0, "bounds": {"x": 0, "y": 32, "w": 32, "h": 32 } }, { "frame": 1, "bounds": {"x": 0, "y": 32, "w": 32, "h": 32 } }, { "frame": 3, "bounds": {"x": 0, "y": 32, "w": 32, "h": 32 } }] },
+   { "name": "Idle_North", "color": "#0000ffff", "keys": [{ "frame": 0, "bounds": {"x": 0, "y": 64, "w": 32, "h": 32 } }, { "frame": 3, "bounds": {"x": 0, "y": 64, "w": 32, "h": 32 } }] },
+   { "name": "Walk_South", "color": "#0000ffff", "keys": [{ "frame": 0, "bounds": {"x": 0, "y": 96, "w": 32, "h": 32 } }] },
+   { "name": "Walk", "color": "#0000ffff", "keys": [{ "frame": 0, "bounds": {"x": 0, "y": 128, "w": 32, "h": 32 } }] },
+   { "name": "Walk_North", "color": "#0000ffff", "keys": [{ "frame": 0, "bounds": {"x": 0, "y": 160, "w": 32, "h": 32 } }] }
+  ]
+ }
+}
