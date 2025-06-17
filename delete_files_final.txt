@@ -1,5 +1,0 @@
-Elimina manualmente los archivos:
-- apps/frontend/src/scripts/pixi/ianacimiento.ts
-- apps/frontend/src/scripts/pixi/timeline.ts
-
-El resto del código ya ha sido restaurado a la versión básica de solo estrellas animadas.

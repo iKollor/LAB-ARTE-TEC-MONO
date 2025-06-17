@@ -38,6 +38,5 @@ yarn-error.log*
 *.pem
 
 .qodo
-/apps/frontend/.qodo
 .astro
 .vscode
