@@ -1,6 +1,6 @@
 import { io, Socket } from "socket.io-client";
 
-const BACKEND_URL = "http://localhost:3000"; // Cambia si usas otro puerto
+const BACKEND_URL = "http://192.168.100.130:3000"; // Cambia si usas otro puerto
 
 let worldId = localStorage.getItem("worldId");
 
