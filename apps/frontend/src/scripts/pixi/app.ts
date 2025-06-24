@@ -6,9 +6,55 @@ import socket from '../socket';
 
 let pixiApp: Application | null = null;
 let showNacimiento = false;
+let iaCharacter: IACharacter | null = null;
+let iaTargetPosition: { x: number, y: number } | null = null;
+let mainScreen: Container;
 
+// Escuchar eventos de control de IA desde el backend
+socket.on('ia-move', (data) => {
+  if (iaCharacter && data.position) {
+    iaTargetPosition = { ...data.position };
+    if (showNacimiento) {
+      console.log('[FRONT] Recibido ia-move:', data);
+    }
+  }
+});
+socket.on('ia-speak', (data) => {
+  if (iaCharacter && data.text && showNacimiento) {
+    console.log('IA dice:', data.text);
+  }
+});
+socket.on('ia-listen', () => {
+  if (iaCharacter && showNacimiento) {
+    console.log('IA está escuchando...');
+  }
+});
+socket.on('ia-change-world', (data) => {
+  if (!iaCharacter || !mainScreen) return;
+  const myWorldId = localStorage.getItem('worldId');
+  // En todos los mundos: si el backend asigna la IA a este mundo, agregarla; si no, quitarla
+  if (data.worldId === myWorldId) {
+    if (!mainScreen.children.includes(iaCharacter)) {
+      mainScreen.addChild(iaCharacter);
+      console.log('[FRONT] IA agregada al mainScreen (cambio de mundo):', data.worldId);
+    }
+  } else {
+    if (mainScreen.children.includes(iaCharacter)) {
+      mainScreen.removeChild(iaCharacter);
+      console.log('[FRONT] IA eliminada del mainScreen (cambio de mundo):', data.worldId);
+    }
+  }
+});
+socket.on('ia-interact', (data) => {
+  if (iaCharacter && data.target && showNacimiento) {
+    console.log('IA interactúa con:', data.target);
+  }
+});
 socket.on('world-assigned', (data) => {
   showNacimiento = !!data.isOrigin;
+  localStorage.setItem('worldId', data.worldId);
+  // Puedes agregar un log para depuración
+  console.log('[FRONT] world-assigned:', data, 'showNacimiento:', showNacimiento);
 });
 
 export async function init(element: Element) {
@@ -37,7 +83,7 @@ export async function init(element: Element) {
   element.appendChild(app.canvas);
 
   // Crear contenedor principal
-  const mainScreen = new Container();
+  mainScreen = new Container();
 
   // Agregar fondo estrellado
   const background = new StarryBackground(app);
@@ -80,44 +126,50 @@ export async function init(element: Element) {
     }
   });
 
-  // Esperar a que termine el Big Bang y activar la implosión si es origen
+  console.log(showNacimiento, 'showNacimiento');
+
+  // Cargar el spritesheet y crear la IA en todos los mundos, pero solo agregarla tras la animación (origen) o cuando el backend la asigne (otros)
+  const spritesheet = await loadAsepriteSheet('IA', '/prototype_character.json');
+  console.log('Spritesheet cargado:', spritesheet);
+
+  iaCharacter = new IACharacter(
+    app.renderer.width / 2, // Posición inicial X (centro)
+    app.renderer.height / 2, // Posición inicial Y (centro)
+    spritesheet,
+    'IACharacter', // Nombre del personaje
+    100, // HP
+    2 // Velocidad
+  );
+
+  // Nacimiento con animación solo en el mundo de origen
   if (showNacimiento) {
-    // Generar el personaje de la IA después de la implosión
     background.waitForBigBang().then(() => {
       background.triggerImplosion().then(async () => {
-        const spritesheet = await loadAsepriteSheet('IA', '/prototype_character.json');
-        console.log('Spritesheet cargado:', spritesheet);
-
-        const iaCharacter = new IACharacter(
-          app.renderer.width / 2, // Posición inicial X (centro)
-          app.renderer.height / 2, // Posición inicial Y (centro)
-          spritesheet,
-          'IACharacter', // Nombre del personaje
-          100, // HP
-          2 // Velocidad
-        );
-
-        // Generar puntos aleatorios para patrullaje, comenzando desde el centro
-        const randomPatrolPoints = [
-          { x: app.renderer.width / 2, y: app.renderer.height / 2 }, // Centro
-          ...Array.from({ length: 5 }, () => ({
-            x: Math.random() * app.renderer.width,
-            y: Math.random() * app.renderer.height,
-          }))
-        ];
-
-        iaCharacter.setAutonomousPatrol(randomPatrolPoints);
-        mainScreen.addChild(iaCharacter);
-
+        socket.emit('ia-born');
+        console.log('[APP] Evento ia-born emitido al backend');
+        if (iaCharacter && !mainScreen.children.includes(iaCharacter)) {
+          mainScreen.addChild(iaCharacter);
+        }
         // Actualizar el movimiento de la IA en cada frame
         app.ticker.add(() => {
-          iaCharacter.updateAI(app.ticker.deltaMS);
+          if (iaCharacter && iaTargetPosition) {
+            const arrived = iaCharacter.updateMovementOrIdle(app.ticker.deltaMS, iaTargetPosition);
+            if (arrived) iaTargetPosition = null;
+          }
         });
       }).catch((error) => {
         console.error('Error durante la implosión:', error);
       });
     }).catch((error) => {
       console.error('Error durante el Big Bang:', error);
+    });
+  } else {
+    // En otros mundos, solo mover la IA si está en el escenario
+    app.ticker.add(() => {
+      if (iaCharacter && iaTargetPosition && mainScreen.children.includes(iaCharacter)) {
+        const arrived = iaCharacter.updateMovementOrIdle(app.ticker.deltaMS, iaTargetPosition);
+        if (arrived) iaTargetPosition = null;
+      }
     });
   }
 }

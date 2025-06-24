@@ -17,17 +17,48 @@
     import { init as pixiInit } from "../scripts/pixi/app";
     import socket from "../scripts/socket";
 
-    let showNacimiento = false;
+    let pixiStarted = false;
+    let lastWorldId = null;
+    function startPixiIfNeeded() {
+        if (!pixiStarted) {
+            const container = document.getElementById("canvas-container");
+            if (container) {
+                pixiInit(container);
+                pixiStarted = true;
+                // Log el worldId local
+                setTimeout(() => {
+                    console.log('[MYWORLD] worldId localStorage:', localStorage.getItem('worldId'));
+                }, 1000);
+            }
+        }
+    }
+
+    // Siempre inicializa Pixi al cargar la página
+    window.addEventListener('DOMContentLoaded', startPixiIfNeeded);
+    // También reintenta si llega world-assigned después
     socket.on("world-assigned", (data) => {
-        showNacimiento = !!data.isOrigin;
+        startPixiIfNeeded();
+        lastWorldId = data.worldId;
+        localStorage.setItem('worldId', data.worldId); // Asegura que el worldId esté sincronizado
         if (data.isOrigin) {
             console.log("¡Eres el primer mundo creado! La IA nacerá aquí. ID:", data.worldId);
         } else {
             console.log("Mundo asignado desde myworld.astro:", data.worldId);
         }
-        const container = document.getElementById("canvas-container");
-        if (container) {
-            pixiInit(container);
-        }
+        // Log para depuración
+        setTimeout(() => {
+            console.log('[MYWORLD] worldId localStorage tras world-assigned:', localStorage.getItem('worldId'));
+        }, 1000);
+    });
+
+    // Log para saber si llegan eventos de cambio de mundo
+    socket.on('ia-change-world', (data) => {
+        console.log('[MYWORLD] Evento ia-change-world recibido:', data, '| worldId local:', localStorage.getItem('worldId'));
+    });
+
+    window.addEventListener('DOMContentLoaded', () => {
+        setTimeout(() => {
+            console.log('[MYWORLD] Esperando eventos ia-change-world. worldId local:', localStorage.getItem('worldId'));
+        }, 2000);
     });
 </script>
