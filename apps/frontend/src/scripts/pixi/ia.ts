@@ -128,6 +128,7 @@ export class IACharacter extends MultiAnimatedSprite {
                 this.updateSliceAnimation(deltaMS);
                 return false; // sigue caminando
             } else {
+                // Establecer idle correctamente en la última dirección
                 this.setIdleByDirection(this.lastDirection || 'South');
                 this.updateSliceAnimation(deltaMS);
                 return true; // llegó al destino

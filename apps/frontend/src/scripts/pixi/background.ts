@@ -327,6 +327,25 @@ export class StarryBackground extends Container {
     requestAnimationFrame(animateShockwave);
   }
 
+  /**
+   * Hace visibles todas las estrellas dispersas inmediatamente (sin animación).
+   * Útil cuando no se ejecuta el Big Bang pero se quiere mostrar el fondo estrellado.
+   */
+  public showAllStarsInstantly() {
+    this.bigBangState = 'done';
+    // Reposicionar todas las estrellas de forma aleatoria y restaurar alpha
+    for (const star of this.stars) {
+      star.gfx.x = Math.random() * this.app.renderer.width;
+      star.gfx.y = Math.random() * this.app.renderer.height;
+      star.gfx.alpha = star.baseAlpha;
+    }
+    this.zoomBlur.strength = 0;
+    this.bigBangStars = [];
+    if (this.centerDot && this.children.includes(this.centerDot)) {
+      this.removeChild(this.centerDot);
+    }
+  }
+
   destroy(options?: boolean | { children?: boolean; texture?: boolean; baseTexture?: boolean }) {
     window.removeEventListener('resize', this.onResize);
     super.destroy(options);

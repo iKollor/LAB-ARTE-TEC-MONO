@@ -9,6 +9,9 @@ let showNacimiento = false;
 let iaCharacter: IACharacter | null = null;
 let iaTargetPosition: { x: number, y: number } | null = null;
 let mainScreen: Container;
+let worldExist = false;
+let iaBorn = false;
+let worldAssignedData: any = null;
 
 // Escuchar eventos de control de IA desde el backend
 socket.on('ia-move', (data) => {
@@ -52,12 +55,30 @@ socket.on('ia-interact', (data) => {
 });
 socket.on('world-assigned', (data) => {
   showNacimiento = !!data.isOrigin;
+  worldExist = !!data.worldExist;
+  iaBorn = !!data.iaBorn;
   localStorage.setItem('worldId', data.worldId);
+  worldAssignedData = data;
   // Puedes agregar un log para depuración
-  console.log('[FRONT] world-assigned:', data, 'showNacimiento:', showNacimiento);
+  console.log('[FRONT] world-assigned:', data, 'showNacimiento:', showNacimiento, 'worldExist:', worldExist, 'iaBorn:', iaBorn);
 });
 
 export async function init(element: Element) {
+  // Esperar a que world-assigned esté listo
+  if (!worldAssignedData) {
+    await new Promise(resolve => {
+      const handler = (data: any) => {
+        worldAssignedData = data;
+        socket.off('world-assigned', handler);
+        resolve(null);
+      };
+      socket.on('world-assigned', handler);
+    });
+    showNacimiento = !!worldAssignedData.isOrigin;
+    worldExist = !!worldAssignedData.worldExist;
+    iaBorn = !!worldAssignedData.iaBorn;
+  }
+
   // Si ya existe una instancia previa, destrúyela
   if (pixiApp) {
     pixiApp.destroy(true, { children: true, texture: true });
@@ -141,35 +162,46 @@ export async function init(element: Element) {
     2 // Velocidad
   );
 
-  // Nacimiento con animación solo en el mundo de origen
-  if (showNacimiento) {
+  // --- Lógica para mostrar animación o solo estrellas según flags del backend ---
+  if (!worldExist) {
+    // Mundo nuevo: mostrar Big Bang
     background.waitForBigBang().then(() => {
-      background.triggerImplosion().then(async () => {
-        socket.emit('ia-born');
-        console.log('[APP] Evento ia-born emitido al backend');
-        if (iaCharacter && !mainScreen.children.includes(iaCharacter)) {
-          mainScreen.addChild(iaCharacter);
-        }
-        // Actualizar el movimiento de la IA en cada frame
-        app.ticker.add(() => {
-          if (iaCharacter && iaTargetPosition) {
-            const arrived = iaCharacter.updateMovementOrIdle(app.ticker.deltaMS, iaTargetPosition);
-            if (arrived) iaTargetPosition = null;
+      if (showNacimiento) {
+        // Mundo nuevo y de origen: implosión + nacimiento IA
+        background.triggerImplosion().then(async () => {
+          if (iaCharacter && !mainScreen.children.includes(iaCharacter)) {
+            mainScreen.addChild(iaCharacter);
           }
+          socket.emit('ia-born');
+          console.log('[APP] Evento ia-born emitido al backend (origen)');
+        }).catch((error) => {
+          console.error('Error durante la implosión:', error);
         });
-      }).catch((error) => {
-        console.error('Error durante la implosión:', error);
-      });
+      } else {
+        // Mundo nuevo pero NO de origen: solo avisar al backend tras Big Bang
+        socket.emit('ia-born');
+        console.log('[APP] Big Bang en mundo nuevo NO origen, solo se avisa al backend');
+      }
     }).catch((error) => {
       console.error('Error durante el Big Bang:', error);
     });
   } else {
-    // En otros mundos, solo mover la IA si está en el escenario
-    app.ticker.add(() => {
-      if (iaCharacter && iaTargetPosition && mainScreen.children.includes(iaCharacter)) {
+    // Mundo ya existente: solo fondo disperso
+    background.showAllStarsInstantly();
+    socket.emit('ia-born');
+    console.log('[APP] Solo se muestra fondo disperso y se avisa al backend');
+  }
+
+  // Ticker global para actualizar el movimiento de la IA si está en el escenario
+  app.ticker.add(() => {
+    if (iaCharacter && mainScreen.children.includes(iaCharacter)) {
+      if (iaTargetPosition) {
         const arrived = iaCharacter.updateMovementOrIdle(app.ticker.deltaMS, iaTargetPosition);
         if (arrived) iaTargetPosition = null;
+      } else {
+        iaCharacter.updateMovementOrIdle(app.ticker.deltaMS, null);
       }
-    });
-  }
+    }
+  });
+  // La IA solo se agrega al escenario cuando el backend emite ia-change-world con el worldId correspondiente
 }

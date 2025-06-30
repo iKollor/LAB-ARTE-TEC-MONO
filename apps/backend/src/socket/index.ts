@@ -62,6 +62,8 @@ export const initializeSocket = (httpServer: any, wm: WorldManager) => {
 
         // Asignar mundo único por usuario/sesión
         let worldId = socket.handshake.auth.worldId;
+        let wasCreated = false;
+        let worldExist = false;
         // Si el worldId no existe en el backend, crea un nuevo mundo
         let world = worldManager.getWorld(worldId);
         if (!world) {
@@ -71,21 +73,27 @@ export const initializeSocket = (httpServer: any, wm: WorldManager) => {
                 createdAt: new Date(),
             });
             world = worldManager.getWorld(worldId); // Solo una vez aquí
+            worldExist = false;
             if (worldManager.getOriginWorldId() === worldId) {
                 console.log(`¡Primer mundo creado! ID: ${worldId}`);
                 iaHasBorn = true;
                 // Emitir el nacimiento de la IA en el mundo de origen
                 io.emit('ia-change-world', { worldId });
             }
+        } else {
+            worldExist = true;
         }
         const isOrigin = !!world?.isOrigin;
+        // Determinar si la IA ya nació en este mundo
+        let iaBorn = false;
+        if (world && world.iaBorn) iaBorn = true;
         worldManager.addSession(socket.id, {
             id: socket.id,
             worldId,
             joinedAt: new Date(),
         });
-        console.log(`[SOCKET] Emitiendo world-assigned:`, { worldId, isOrigin });
-        socket.emit('world-assigned', { worldId, isOrigin });
+        console.log(`[SOCKET] Emitiendo world-assigned:`, { worldId, isOrigin, worldExist, iaBorn });
+        socket.emit('world-assigned', { worldId, isOrigin, worldExist, iaBorn });
 
         // Mostrar todos los worldId actuales en cada conexión
         const allWorlds = worldManager.getAllWorlds().map(w => ({ id: w.id, isOrigin: w.isOrigin }));
@@ -119,6 +127,9 @@ export const initializeSocket = (httpServer: any, wm: WorldManager) => {
         });
         socket.on('ia-born', () => {
             console.log('[IA-BACKEND] Recibido ia-born desde frontend');
+            // Marcar que la IA ya nació en este mundo
+            const w = worldManager.getWorld(worldId);
+            if (w) w.iaBorn = true;
             setTimeout(() => {
                 startRandomIAMovement();
                 startRandomIAWorldChange();

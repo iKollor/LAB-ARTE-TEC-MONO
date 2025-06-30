@@ -3,6 +3,7 @@ export interface World {
     createdAt: Date;
     name?: string;
     isOrigin?: boolean; // Indica si es el mundo original
+    iaBorn?: boolean; // Indica si la IA ya nació en este mundo
 }
 
 export interface Session {
