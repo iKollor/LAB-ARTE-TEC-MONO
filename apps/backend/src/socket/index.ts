@@ -1,3 +1,4 @@
+
 import { Server } from "socket.io";
 import { WorldManager } from '../services/worldManager';
 import { v4 as uuidv4 } from 'uuid';
@@ -7,114 +8,111 @@ let io: Server;
 let worldManager: WorldManager;
 
 let iaHasBorn = false;
-let iaIntervalsStarted = false;
+
 let iaMoveInterval: NodeJS.Timeout | null = null;
 let iaWorldInterval: NodeJS.Timeout | null = null;
 
 let activeSessions = 0;
 
-function startRandomIAMovement() {
-    if (iaMoveInterval) {
-        clearInterval(iaMoveInterval);
-        console.log('[IA-BACKEND] Intervalo anterior de movimiento limpiado');
+
+function clearIntervalIfExists(interval: NodeJS.Timeout | null, label: string): null {
+    if (interval) {
+        clearInterval(interval);
+        console.log(`[IA-BACKEND] Intervalo de ${label} limpiado`);
     }
+    return null;
+}
+
+function startRandomIAMovement() {
+    iaMoveInterval = clearIntervalIfExists(iaMoveInterval, 'movimiento');
     if (activeSessions === 0) return;
     console.log('[IA-BACKEND] Iniciando intervalo de movimiento aleatorio');
     iaMoveInterval = setInterval(() => {
-        if (activeSessions === 0) {
-            stopIAIntervalsIfNoSessions();
-            return;
-        }
-        // No emitir si no hay mundos activos
-        if (worldManager.getAllWorlds().length === 0) {
-            // Ya no se debe llamar a stopIAIntervalsIfNoWorlds, solo salir
-            return;
-        }
-        // Generar posición aleatoria dentro de un rango (ajusta según tu mundo)
-        const x = Math.floor(Math.random() * 800) + 100; // ejemplo: entre 100 y 900
-        const y = Math.floor(Math.random() * 400) + 100; // ejemplo: entre 100 y 500
+        if (activeSessions === 0) return stopIAIntervalsIfNoSessions();
+        if (worldManager.getAllWorlds().length === 0) return;
+        const x = Math.floor(Math.random() * 800) + 100;
+        const y = Math.floor(Math.random() * 400) + 100;
         const position = { x, y };
-        if (io) {
-            io.emit('ia-move', { position });
-            console.log('[IA-BACKEND] Emitiendo ia-move:', { position });
-        } else {
-            console.log('[IA-BACKEND] io no está definido, no se emite ia-move');
-        }
-    }, 3000); // cada 3 segundos
+        io?.emit('ia-move', { position });
+        console.log('[IA-BACKEND] Emitiendo ia-move:', { position });
+    }, 3000);
 }
 
 function startRandomIAWorldChange() {
-    if (iaWorldInterval) {
-        clearInterval(iaWorldInterval);
-        console.log('[IA-BACKEND] Intervalo anterior de cambio de mundo limpiado');
-    }
+    iaWorldInterval = clearIntervalIfExists(iaWorldInterval, 'cambio de mundo');
     if (activeSessions === 0) return;
     console.log('[IA-BACKEND] Iniciando intervalo de cambio de mundo aleatorio');
     iaWorldInterval = setInterval(() => {
-        if (activeSessions === 0) {
-            stopIAIntervalsIfNoSessions();
-            return;
-        }
-        // No emitir si no hay mundos activos
-        if (worldManager.getAllWorlds().length < 2) {
-            // Solo emitir ia-change-world si hay 2 o más mundos activos
-            return;
-        }
-        // Filtrar mundos que NO estén pendientes de destrucción
+        if (activeSessions === 0) return stopIAIntervalsIfNoSessions();
         const allWorlds = worldManager.getAllWorlds().filter(w => !w.pendingDestroy);
+        const allWorldsFull = worldManager.getAllWorlds();
         if (allWorlds.length < 2) return;
-        // Elegir un mundo al azar
         const randomWorld = allWorlds[Math.floor(Math.random() * allWorlds.length)];
         if (!randomWorld) return;
         const aiManager = getAIManager();
-        if (aiManager) aiManager.changeWorld(randomWorld.id);
-        console.log('[IA-BACKEND] Emitiendo ia-change-world:', { worldId: randomWorld.id, allWorlds: allWorlds.map(w => w.id) });
-        io.emit('ia-change-world', { worldId: randomWorld.id });
+        aiManager?.changeWorld(randomWorld.id);
+        io?.emit('ia-change-world', { worldId: randomWorld.id });
+        console.log('[IA-BACKEND] Emitiendo ia-change-world:', {
+            worldId: randomWorld.id,
+            allWorlds: allWorlds.map(w => w.id),
+            allWorldsFull: allWorldsFull.map(w => ({ id: w.id, pendingDestroy: w.pendingDestroy }))
+        });
     }, 3000);
 }
 
 function stopIAIntervalsIfNoSessions() {
-    if (iaMoveInterval) {
-        clearInterval(iaMoveInterval);
-        iaMoveInterval = null;
-        console.log('[IA-BACKEND] Intervalo de movimiento detenido (sin sesiones activas)');
-    }
-    if (iaWorldInterval) {
-        clearInterval(iaWorldInterval);
-        iaWorldInterval = null;
-        console.log('[IA-BACKEND] Intervalo de cambio de mundo detenido (sin sesiones activas)');
-    }
+    iaMoveInterval = clearIntervalIfExists(iaMoveInterval, 'movimiento (sin sesiones activas)');
+    iaWorldInterval = clearIntervalIfExists(iaWorldInterval, 'cambio de mundo (sin sesiones activas)');
 }
 
-// Elimina el mundo y detiene intervalos IA si no quedan mundos activos
+
 function deleteWorldAndCheckIA(worldId: string) {
+    const world = worldManager.getWorld(worldId);
+    if (!world) {
+        console.warn(`[IA-BACKEND] Intento de eliminar mundo inexistente: ${worldId}`);
+        return;
+    }
     worldManager.deleteWorld(worldId);
     console.log(`Mundo eliminado tras 20s de inactividad: ${worldId}`);
-    // Solo destruir la IA si ya no quedan mundos activos
     if (worldManager.getAllWorlds().length === 0) {
         destroyAIManager();
         console.log('[IA-BACKEND] Instancia global de IA destruida (sin mundos activos)');
-        if (io) io.emit('ia-destroyed');
+        io?.emit('ia-destroyed');
     }
 }
 
-// Manejador de timeouts de eliminación de mundos
+
 const worldDeleteTimeouts: Map<string, NodeJS.Timeout> = new Map();
 
 function scheduleWorldDeletion(worldId: string) {
-    if (!worldDeleteTimeouts.has(worldId)) {
-        const timeout = setTimeout(() => {
-            deleteWorldAndCheckIA(worldId);
-            worldDeleteTimeouts.delete(worldId);
-        }, 20000); // 20 segundos
-        worldDeleteTimeouts.set(worldId, timeout);
-    }
+    if (worldDeleteTimeouts.has(worldId)) return;
+    const timeout = setTimeout(() => {
+        deleteWorldAndCheckIA(worldId);
+        worldDeleteTimeouts.delete(worldId);
+    }, 20000);
+    worldDeleteTimeouts.set(worldId, timeout);
 }
 
 function cancelWorldDeletion(worldId: string) {
-    if (worldDeleteTimeouts.has(worldId)) {
-        clearTimeout(worldDeleteTimeouts.get(worldId));
+    const timeout = worldDeleteTimeouts.get(worldId);
+    if (timeout) {
+        clearTimeout(timeout);
         worldDeleteTimeouts.delete(worldId);
+        // Limpia pendingDestroy SIEMPRE si el mundo existe y fuerza ciclo IA si corresponde
+        const world = worldManager.getWorld(worldId);
+        if (world) {
+            world.pendingDestroy = false;
+            if (iaWorldInterval) {
+                const allWorldsNoPending = worldManager.getAllWorlds().filter(w => !w.pendingDestroy);
+                if (allWorldsNoPending.length >= 2) {
+                    const randomWorld = allWorldsNoPending[Math.floor(Math.random() * allWorldsNoPending.length)];
+                    if (randomWorld) {
+                        getAIManager()?.changeWorld(randomWorld.id);
+                        io?.emit('ia-change-world', { worldId: randomWorld.id });
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -132,171 +130,148 @@ export const initializeSocket = (httpServer: any, wm: WorldManager) => {
         activeSessions++;
         // Ya NO se inician los intervalos aquí
 
-        // Asignar mundo único por usuario/sesión
 
+        // --- Asignación de mundo único por usuario/sesión ---
+        // Asignación de mundo único por usuario/sesión
         let worldId = socket.handshake.auth.worldId;
-        let worldExist = false;
         let world = worldManager.getWorld(worldId);
+        const worldExist = !!world;
         if (!world) {
             worldId = uuidv4();
             worldManager.createWorld(worldId, {
                 id: worldId,
                 createdAt: new Date(),
-                iaBorn: false, // Por defecto, ningún mundo nuevo tiene iaBorn
+                iaBorn: false,
+                pendingDestroy: false
             });
             world = worldManager.getWorld(worldId);
-            worldExist = false;
-            // Si es el primer mundo, recrear la IA
             if (worldManager.getOriginWorldId() === worldId) {
                 recreateAIManager();
-                console.log(`[BACKEND] IA recreada para el nuevo mundo de origen: ${worldId}`);
-                iaHasBorn = false; // Solo se marca true cuando nazca realmente
-                // No emitir ia-change-world aquí, solo cuando nazca la IA
+                iaHasBorn = false;
             }
-        } else {
-            worldExist = true;
         }
         const isOrigin = !!world?.isOrigin;
-        // iaBorn ahora es global, no por mundo
-        let iaBorn = iaHasBorn;
         worldManager.addSession(socket.id, {
             id: socket.id,
             worldId,
             joinedAt: new Date(),
         });
-        console.log(`[SOCKET] Emitiendo world-assigned:`, { worldId, isOrigin, worldExist, iaBorn });
-        socket.emit('world-assigned', { worldId, isOrigin, worldExist, iaBorn });
+        socket.emit('world-assigned', { worldId, isOrigin, worldExist, iaBorn: iaHasBorn });
+        // Log de mundos actuales
+        console.log(`[SOCKET] world-assigned:`, { worldId, isOrigin, worldExist, iaBorn: iaHasBorn });
+        console.log("Worlds actuales:", worldManager.getAllWorlds().map(w => ({ id: w.id, isOrigin: w.isOrigin })));
 
-        // Mostrar todos los worldId actuales en cada conexión
-        const allWorlds = worldManager.getAllWorlds().map(w => ({ id: w.id, isOrigin: w.isOrigin }));
-        console.log("Worlds actuales:", allWorlds);
 
-        // Al conectar, si la IA ya había nacido globalmente y el mundo vuelve a estar activo, asegurar que la IA esté asignada a algún mundo y emitir ia-change-world si es necesario
-        if (iaBorn && activeSessions > 0) {
+        // Lógica de reconexión y reactivación de intervalos IA
+        if (iaHasBorn && activeSessions > 0) {
             const allWorlds = worldManager.getAllWorlds().filter(w => !w.pendingDestroy);
-            // Si solo hay un mundo y estaba pendiente de destrucción, reanudar intervalos y reasignar IA
             if (allWorlds.length === 1 && allWorlds[0].id === worldId && allWorlds[0].pendingDestroy) {
                 startRandomIAMovement();
                 startRandomIAWorldChange();
                 allWorlds[0].pendingDestroy = false;
-                // Reasignar IA explícitamente al mundo reactivado
                 worldManager.getAllWorlds().forEach(w => { w.iaBorn = false; });
                 allWorlds[0].iaBorn = true;
                 io.emit('ia-change-world', { worldId });
                 console.log('[IA-BACKEND] IA reanudada y reasignada tras reconexión al único mundo pendiente de destrucción:', worldId);
-            } else {
-                // Si tras la reconexión ahora hay 2 o más mundos activos, SIEMPRE reanudar el intervalo y forzar un cambio de mundo inmediato
-                if (allWorlds.length >= 2) {
-                    // Siempre reanudar el intervalo si no está activo
-                    if (!iaWorldInterval) {
-                        startRandomIAWorldChange();
-                        console.log('[IA-BACKEND] Intervalo de cambio de mundo reanudado tras reconexión, hay', allWorlds.length, 'mundos activos.');
-                    }
-                    // No forzar más cambios de mundo aquí, dejar que el intervalo se encargue
-                }
+            } else if (allWorlds.length >= 2 && !iaWorldInterval) {
+                startRandomIAWorldChange();
+                console.log('[IA-BACKEND] Intervalo de cambio de mundo reanudado tras reconexión, hay', allWorlds.length, 'mundos activos.');
             }
         }
 
-        // Escuchar comandos de IA desde el frontend o panel de control
-        socket.on('ia-move', (data) => {
-            console.log('[IA-BACKEND] Recibido ia-move desde frontend:', data);
-            const aiManager = getAIManager();
-            if (aiManager) aiManager.moveTo(data.position);
-            io.emit('ia-move', data); // Reenvía a todos los clientes
+
+        // --- Escuchar comandos de IA desde el frontend o panel de control ---
+        const aiEvents = [
+            {
+                name: 'ia-move',
+                handler: (data: any) => getAIManager()?.moveTo(data.position)
+            },
+            {
+                name: 'ia-speak',
+                handler: (data: any) => getAIManager()?.speak(data.text)
+            },
+            {
+                name: 'ia-listen',
+                handler: () => getAIManager()?.listen()
+            },
+            {
+                name: 'ia-interact',
+                handler: (data: any) => getAIManager()?.interact(data.target)
+            },
+        ];
+        aiEvents.forEach(({ name, handler }) => {
+            socket.on(name, (data: any) => {
+                console.log(`[IA-BACKEND] Recibido ${name} desde frontend:`, data);
+                handler(data);
+                io.emit(name, data);
+            });
         });
-        socket.on('ia-speak', (data) => {
-            console.log('[IA-BACKEND] Recibido ia-speak desde frontend:', data);
-            const aiManager = getAIManager();
-            if (aiManager) aiManager.speak(data.text);
-            io.emit('ia-speak', data);
-        });
-        socket.on('ia-listen', () => {
-            console.log('[IA-BACKEND] Recibido ia-listen desde frontend');
-            const aiManager = getAIManager();
-            if (aiManager) aiManager.listen();
-            io.emit('ia-listen');
-        });
+
         socket.on('ia-change-world', (data) => {
             console.log('[IA-BACKEND] Recibido ia-change-world desde frontend:', data);
-            // Solo permitir cambio de mundo si el destino existe y no está pendiente de destrucción
             const targetWorld = worldManager.getWorld(data.worldId);
             if (targetWorld && !targetWorld.pendingDestroy) {
-                const aiManager = getAIManager();
-                if (aiManager) aiManager.changeWorld(data.worldId);
+                getAIManager()?.changeWorld(data.worldId);
                 io.emit('ia-change-world', data);
             } else {
                 console.log('[IA-BACKEND] Cambio de mundo ignorado: mundo no existe o está pendiente de destrucción', data.worldId);
             }
         });
-        socket.on('ia-interact', (data) => {
-            console.log('[IA-BACKEND] Recibido ia-interact desde frontend:', data);
-            const aiManager = getAIManager();
-            if (aiManager) aiManager.interact(data.target);
-            io.emit('ia-interact', data);
-        });
+
         socket.on('ia-born', () => {
             console.log('[IA-BACKEND] Recibido ia-born desde frontend');
-            // Solo permitir el nacimiento si la IA global NO ha nacido
             if (!iaHasBorn) {
                 iaHasBorn = true;
-                // Marcar solo un mundo con iaBorn: el actual
                 worldManager.getAllWorlds().forEach(w => { w.iaBorn = false; });
                 const w = worldManager.getWorld(worldId);
                 if (w) w.iaBorn = true;
-                // Solo iniciar intervalos si hay sesiones activas
                 if (activeSessions > 0) {
                     startRandomIAMovement();
                     startRandomIAWorldChange();
                     console.log('[IA-BACKEND] ¡IA ha nacido! Comenzando a emitir acciones.');
                 }
-                // Emitir ia-change-world para que todos los clientes sepan dónde está la IA
                 io.emit('ia-change-world', { worldId });
             } else {
-                // Si ya había nacido globalmente, ignorar el evento
                 console.log('[IA-BACKEND] Evento ia-born ignorado: la IA ya había nacido globalmente.');
             }
         });
+
 
         socket.on("disconnect", () => {
             const session = worldManager.getSession(socket.id);
             worldManager.removeSession(socket.id);
             console.log("User disconnected: " + socket.id);
             activeSessions = Math.max(0, activeSessions - 1);
-            if (activeSessions === 0) {
-                stopIAIntervalsIfNoSessions();
-            }
-            // Lógica IA: si el mundo se queda sin sesiones y hay otro mundo disponible, mover la IA inmediatamente
-            if (session) {
-                const worldId = session.worldId;
-                const stillActive = Array.from(worldManager.getAllWorlds()).some(w => w.id === worldId && !w.pendingDestroy);
-                if (!stillActive) {
-                    // Buscar otro mundo disponible (no pendiente de destrucción)
-                    const otherWorlds = worldManager.getAllWorlds().filter(w => w.id !== worldId && !w.pendingDestroy);
-                    if (otherWorlds.length > 0) {
-                        // Marcar iaBorn solo en el target y actualizar global
-                        worldManager.getAllWorlds().forEach(w => { w.iaBorn = false; });
-                        const targetWorld = otherWorlds[0];
-                        targetWorld.iaBorn = true;
-                        iaHasBorn = true;
-                        const aiManager = getAIManager();
-                        if (aiManager) aiManager.changeWorld(targetWorld.id);
-                        io.emit('ia-change-world', { worldId: targetWorld.id });
-                        console.log('[IA-BACKEND] IA movida automáticamente al mundo disponible tras desconexión (solo un mundo con iaBorn):', targetWorld.id);
-                    } else {
-                        // No hay más mundos disponibles, programa la eliminación con delay y marca iaBorn global en false
-                        iaHasBorn = false;
-                        scheduleWorldDeletion(worldId);
-                    }
+            if (activeSessions === 0) stopIAIntervalsIfNoSessions();
+            if (!session) return;
+            const worldId = session.worldId;
+            // Solo mover la IA si está en el mundo que se desconectó
+            const iaWorld = worldManager.getAllWorlds().find(w => w.iaBorn);
+            const iaEstaEnEsteMundo = iaWorld && iaWorld.id === worldId;
+            const stillActive = worldManager.getAllWorlds().some(w => w.id === worldId && !w.pendingDestroy);
+            if (!stillActive && iaEstaEnEsteMundo) {
+                const otherWorlds = worldManager.getAllWorlds().filter(w => w.id !== worldId && !w.pendingDestroy);
+                if (otherWorlds.length > 0) {
+                    worldManager.getAllWorlds().forEach(w => { w.iaBorn = false; });
+                    const targetWorld = otherWorlds[0];
+                    targetWorld.iaBorn = true;
+                    iaHasBorn = true;
+                    getAIManager()?.changeWorld(targetWorld.id);
+                    io.emit('ia-change-world', { worldId: targetWorld.id });
+                    console.log('[IA-BACKEND] IA movida automáticamente al mundo disponible tras desconexión (solo un mundo con iaBorn):', targetWorld.id);
                 } else {
-                    cancelWorldDeletion(worldId);
+                    iaHasBorn = false;
+                    scheduleWorldDeletion(worldId);
                 }
+            } else {
+                // Si la IA no estaba en ese mundo, solo cancelar el borrado si corresponde
+                cancelWorldDeletion(worldId);
             }
         });
     });
 };
 
+
 export const emitEvent = (event: string, data: any) => {
-    if (io) {
-        io.emit(event, data);
-    }
+    io?.emit(event, data);
 };

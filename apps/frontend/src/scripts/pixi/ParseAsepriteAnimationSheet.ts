@@ -28,7 +28,6 @@ export class MultiAnimatedSprite extends PIXI.Container {
 
     setAnimation(name: string) {
         if (this.currentAnimation === name) return;
-        // Filtra solo texturas válidas
         const textures = (this.spritesheet.animations[name] || []).filter(t => t instanceof PIXI.Texture) as PIXI.Texture[];
         if (!textures.length) return;
         if (!this.sprite) {
@@ -48,7 +47,6 @@ export class MultiAnimatedSprite extends PIXI.Container {
             this.sprite.play();
         }
         this.currentAnimation = name;
-        // Si está en modo debug, congelar el frame y mostrar en consola
         if (this._debugFreezeFrame !== null && this.sprite) {
             const idx = Math.max(0, Math.min(this._debugFreezeFrame, this.sprite.textures.length - 1));
             this.sprite.gotoAndStop(idx);
@@ -59,7 +57,6 @@ export class MultiAnimatedSprite extends PIXI.Container {
     // Método para avanzar animación de slice, debe llamarse desde el ticker global
     updateSliceAnimation(deltaMS: number) {
         if (!this._isSlice || !this.sprite || !this.currentAnimation) return;
-        // Si está en modo debug, congelar el frame
         if (this._debugFreezeFrame !== null) {
             const idx = Math.max(0, Math.min(this._debugFreezeFrame, this.sprite.textures.length - 1));
             this.sprite.gotoAndStop(idx);
@@ -75,7 +72,6 @@ export class MultiAnimatedSprite extends PIXI.Container {
             this._sliceFrameElapsed = 0;
             this._sliceFrameIndex = (this._sliceFrameIndex + 1) % textures.length;
             this.sprite.texture = textures[this._sliceFrameIndex];
-            // Debug: mostrar información del frame
             if (DEBUG_LOGS) {
                 const debugInfo: any = {
                     anim: this.currentAnimation,
@@ -84,11 +80,8 @@ export class MultiAnimatedSprite extends PIXI.Container {
                     width: this.sprite.texture.width,
                     height: this.sprite.texture.height
                 };
-                // Si el frame tiene info de origen, mostrarla (sin usar baseTexture)
                 const resource = (this.sprite.texture as any).source?.resource;
-                if (resource && resource.url) {
-                    debugInfo.resourceUrl = resource.url;
-                }
+                if (resource && resource.url) debugInfo.resourceUrl = resource.url;
                 console.log('[SliceAnim] Frame actualizado:', debugInfo);
             }
         }

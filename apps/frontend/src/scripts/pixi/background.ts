@@ -253,47 +253,31 @@ export class StarryBackground extends Container {
   public async triggerImplosion(): Promise<void> {
     const centerX = this.app.renderer.width / 2;
     const centerY = this.app.renderer.height / 2;
-
-    // Seleccionar estrellas al azar hasta el porcentaje especificado
+    // Seleccionar estrellas a implosionar (20% primeras)
     const numStarsToImplode = Math.floor(this.stars.length * 0.2);
     const starsToImplode = this.stars.slice(0, numStarsToImplode);
-
-    // Animar las estrellas hacia el centro
-    await Promise.all(
-      starsToImplode.map(star => {
-        return new Promise<void>(resolve => {
-          const duration = 1; // Duración de la animación
-          const startX = star.gfx.x;
-          const startY = star.gfx.y;
-          const startTime = performance.now();
-
-          const animate = () => {
-            const elapsed = (performance.now() - startTime) / 1000;
-            const progress = Math.min(elapsed / duration, 1);
-            const easedProgress = Math.pow(progress, 3); // Easing cúbico
-
-            star.gfx.x = startX + (centerX - startX) * easedProgress;
-            star.gfx.y = startY + (centerY - startY) * easedProgress;
-
-            if (progress < 1) {
-              requestAnimationFrame(animate);
-            } else {
-              resolve();
-            }
-          };
-
-          animate();
-        });
-      })
-    );
-
-    // Eliminar las estrellas del fondo
+    // Animar estrellas hacia el centro
+    await Promise.all(starsToImplode.map(star => new Promise<void>(resolve => {
+      const duration = 1;
+      const startX = star.gfx.x;
+      const startY = star.gfx.y;
+      const startTime = performance.now();
+      const animate = () => {
+        const elapsed = (performance.now() - startTime) / 1000;
+        const progress = Math.min(elapsed / duration, 1);
+        const eased = Math.pow(progress, 3);
+        star.gfx.x = startX + (centerX - startX) * eased;
+        star.gfx.y = startY + (centerY - startY) * eased;
+        if (progress < 1) requestAnimationFrame(animate); else resolve();
+      };
+      animate();
+    })));
+    // Eliminar estrellas del fondo
     for (const star of starsToImplode) {
       this.removeChild(star.gfx);
       this.stars.splice(this.stars.indexOf(star), 1);
     }
-
-    // Aplicar el filtro Shockwave correctamente
+    // Filtro Shockwave
     const shockwave = new ShockwaveFilter({
       center: { x: centerX, y: centerY },
       amplitude: 100,
@@ -302,28 +286,17 @@ export class StarryBackground extends Container {
       radius: -1,
       time: 0,
     });
-
     this.filters = [shockwave];
-
-    // Animar el tiempo del filtro para que se propague correctamente y solo una vez
-    // Ajustar la velocidad de propagación del filtro Shockwave
-    const SHOCKWAVE_SPEED_FACTOR = 4; // Factor de velocidad para ajustar la rapidez
-
-    const screenDiagonal = Math.sqrt(Math.pow(this.app.renderer.width, 2) + Math.pow(this.app.renderer.height, 2));
-    const shockwaveDuration = screenDiagonal / 500; // Mantener la duración establecida
+    const SHOCKWAVE_SPEED_FACTOR = 4;
+    const screenDiagonal = Math.sqrt(this.app.renderer.width ** 2 + this.app.renderer.height ** 2);
+    const shockwaveDuration = screenDiagonal / 500;
     const startTime = performance.now();
-
     const animateShockwave = () => {
       const elapsed = (performance.now() - startTime) / 1000;
-      shockwave.time = elapsed * SHOCKWAVE_SPEED_FACTOR; // Escalar el tiempo para aumentar la velocidad de propagación
-
-      if (elapsed < shockwaveDuration) {
-        requestAnimationFrame(animateShockwave);
-      } else {
-        this.filters = []; // Desactivar el filtro después de la animación
-      }
+      shockwave.time = elapsed * SHOCKWAVE_SPEED_FACTOR;
+      if (elapsed < shockwaveDuration) requestAnimationFrame(animateShockwave);
+      else this.filters = [];
     };
-
     requestAnimationFrame(animateShockwave);
   }
 

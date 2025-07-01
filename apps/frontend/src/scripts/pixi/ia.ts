@@ -23,18 +23,13 @@ export class IACharacter extends MultiAnimatedSprite {
         this.y = y;
         this.name = name;
         this.hp = hp;
-        this.speed = speed;
-        // Detectar si es móvil
+        // Ajuste de velocidad y escala según dispositivo
         const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+        this.speed = isMobile ? speed * 2 : speed;
         const scale = isMobile ? CHARACTER_SCALE * 2 : CHARACTER_SCALE;
-        if (isMobile) {
-            this.speed = speed * 2;
-        } else {
-            this.speed = speed;
-        }
         this.setAnimation('slice:Idle_South');
-        this.scale.set(scale); // Aplica el escalado definido (doble en móvil)
-        this.sprite?.anchor.set(0.5, 0.5); // Centra el sprite en su posición
+        this.scale.set(scale);
+        this.sprite?.anchor.set(0.5, 0.5);
     }
 
     moveTo(targetX: number, targetY: number) {
@@ -45,31 +40,17 @@ export class IACharacter extends MultiAnimatedSprite {
         if (distance > 1) {
             this.x += (dx / distance) * this.speed;
             this.y += (dy / distance) * this.speed;
-
-            if (Math.abs(dx) > Math.abs(dy)) {
-                dir = dx > 0 ? 'East' : 'West';
-            } else {
-                dir = dy > 0 ? 'South' : 'North';
-            }
+            dir = Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? 'East' : 'West') : (dy > 0 ? 'South' : 'North');
             // Animación de caminar por dirección
             if (this.spritesheet.animations[`slice:Walk_${dir}`]) {
                 this.setAnimation(`slice:Walk_${dir}`);
-                if (this.sprite) {
-                    this.sprite.scale.x = 1;
-                    this.sprite.anchor.x = 0.5;
-                }
-            } else if (dir === 'East' || dir === 'West') {
-                if (this.spritesheet.animations['slice:Walk']) {
-                    this.setAnimation('slice:Walk');
-                    if (this.sprite) {
-                        this.sprite.scale.x = dir === 'West' ? -1 : 1;
-                        this.sprite.anchor.x = 0.5;
-                    }
-                }
+                this.sprite && (this.sprite.scale.x = 1, this.sprite.anchor.x = 0.5);
+            } else if ((dir === 'East' || dir === 'West') && this.spritesheet.animations['slice:Walk']) {
+                this.setAnimation('slice:Walk');
+                this.sprite && (this.sprite.scale.x = dir === 'West' ? -1 : 1, this.sprite.anchor.x = 0.5);
             }
             this.lastDirection = dir;
         } else {
-            // Idle en la última dirección
             this.setIdleByDirection(this.lastDirection);
         }
     }
@@ -80,26 +61,13 @@ export class IACharacter extends MultiAnimatedSprite {
     setIdleByDirection(direction: string) {
         if (this.spritesheet.animations[`slice:Idle_${direction}`]) {
             this.setAnimation(`slice:Idle_${direction}`);
-            if (this.sprite) {
-                this.sprite.scale.x = 1;
-                this.sprite.anchor.x = 0.5;
-            }
-        } else if (direction === 'West' || direction === 'East') {
-            // Usa slice:Idle y flip para West
-            if (this.spritesheet.animations['slice:Idle']) {
-                this.setAnimation('slice:Idle');
-                if (this.sprite) {
-                    this.sprite.scale.x = direction === 'West' ? -1 : 1;
-                    this.sprite.anchor.x = 0.5;
-                }
-            }
+            this.sprite && (this.sprite.scale.x = 1, this.sprite.anchor.x = 0.5);
+        } else if ((direction === 'West' || direction === 'East') && this.spritesheet.animations['slice:Idle']) {
+            this.setAnimation('slice:Idle');
+            this.sprite && (this.sprite.scale.x = direction === 'West' ? -1 : 1, this.sprite.anchor.x = 0.5);
         } else if (this.spritesheet.animations['slice:Idle_South']) {
-            // Fallback a South si no hay nada más
             this.setAnimation('slice:Idle_South');
-            if (this.sprite) {
-                this.sprite.scale.x = 1;
-                this.sprite.anchor.x = 0.5;
-            }
+            this.sprite && (this.sprite.scale.x = 1, this.sprite.anchor.x = 0.5);
         }
     }
 
@@ -134,15 +102,13 @@ export class IACharacter extends MultiAnimatedSprite {
             if (distance > 2) {
                 this.moveTo(targetPosition.x, targetPosition.y);
                 this.updateSliceAnimation(deltaMS);
-                return false; // sigue caminando
+                return false;
             } else {
-                // Establecer idle correctamente en la última dirección
                 this.setIdleByDirection(this.lastDirection || 'South');
                 this.updateSliceAnimation(deltaMS);
-                return true; // llegó al destino
+                return true;
             }
         } else {
-            // Siempre idle en la última dirección si no está caminando
             this.setIdleByDirection(this.lastDirection || 'South');
             this.updateSliceAnimation(deltaMS);
             return true;
