@@ -51,4 +51,7 @@ export class AIManager {
         this.state.currentAction = `interact with ${target}`;
         this.state.lastUpdated = new Date();
     }
+    public getCurrentWorldId(): string {
+        return this.state.currentWorld || '';
+    }
 }

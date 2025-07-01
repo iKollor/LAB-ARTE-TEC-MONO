@@ -24,8 +24,16 @@ export class IACharacter extends MultiAnimatedSprite {
         this.name = name;
         this.hp = hp;
         this.speed = speed;
+        // Detectar si es móvil
+        const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+        const scale = isMobile ? CHARACTER_SCALE * 2 : CHARACTER_SCALE;
+        if (isMobile) {
+            this.speed = speed * 2;
+        } else {
+            this.speed = speed;
+        }
         this.setAnimation('slice:Idle_South');
-        this.scale.set(CHARACTER_SCALE); // Aplica el escalado definido
+        this.scale.set(scale); // Aplica el escalado definido (doble en móvil)
         this.sprite?.anchor.set(0.5, 0.5); // Centra el sprite en su posición
     }
 

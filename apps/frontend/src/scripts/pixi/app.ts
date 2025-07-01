@@ -35,8 +35,8 @@ socket.on('ia-listen', () => {
 socket.on('ia-change-world', (data) => {
   if (!iaCharacter || !mainScreen) return;
   const myWorldId = localStorage.getItem('worldId');
-  // En todos los mundos: si el backend asigna la IA a este mundo, agregarla; si no, quitarla
-  if (data.worldId === myWorldId) {
+  // Si el backend asigna la IA a este mundo, agregarla; si no, quitarla
+  if (data.worldId === myWorldId && iaBorn) {
     if (!mainScreen.children.includes(iaCharacter)) {
       mainScreen.addChild(iaCharacter);
       console.log('[FRONT] IA agregada al mainScreen (cambio de mundo):', data.worldId);
@@ -46,6 +46,11 @@ socket.on('ia-change-world', (data) => {
       mainScreen.removeChild(iaCharacter);
       console.log('[FRONT] IA eliminada del mainScreen (cambio de mundo):', data.worldId);
     }
+  }
+  // Si iaBorn es false, eliminar la IA del escenario aunque el worldId coincida
+  if (!iaBorn && mainScreen.children.includes(iaCharacter)) {
+    mainScreen.removeChild(iaCharacter);
+    console.log('[FRONT] IA eliminada del mainScreen porque iaBorn es false');
   }
 });
 socket.on('ia-interact', (data) => {
@@ -59,6 +64,11 @@ socket.on('world-assigned', (data) => {
   iaBorn = !!data.iaBorn;
   localStorage.setItem('worldId', data.worldId);
   worldAssignedData = data;
+  // Si iaBorn es false y la IA está en el escenario, eliminarla inmediatamente
+  if (!iaBorn && iaCharacter && mainScreen && mainScreen.children.includes(iaCharacter)) {
+    mainScreen.removeChild(iaCharacter);
+    console.log('[FRONT] IA eliminada del mainScreen por world-assigned: iaBorn es false');
+  }
   // Puedes agregar un log para depuración
   console.log('[FRONT] world-assigned:', data, 'showNacimiento:', showNacimiento, 'worldExist:', worldExist, 'iaBorn:', iaBorn);
 });
@@ -166,21 +176,28 @@ export async function init(element: Element) {
   if (!worldExist) {
     // Mundo nuevo: mostrar Big Bang
     background.waitForBigBang().then(() => {
-      if (showNacimiento) {
+      if (showNacimiento && !iaBorn) {
         // Mundo nuevo y de origen: implosión + nacimiento IA
         background.triggerImplosion().then(async () => {
           if (iaCharacter && !mainScreen.children.includes(iaCharacter)) {
             mainScreen.addChild(iaCharacter);
           }
-          socket.emit('ia-born');
-          console.log('[APP] Evento ia-born emitido al backend (origen)');
+          // Solo emitir ia-born si iaBorn sigue siendo false (protección extra)
+          if (!iaBorn) {
+            socket.emit('ia-born');
+            iaBorn = true;
+            console.log('[APP] Evento ia-born emitido al backend (origen)');
+          }
         }).catch((error) => {
           console.error('Error durante la implosión:', error);
         });
       } else {
         // Mundo nuevo pero NO de origen: solo avisar al backend tras Big Bang
-        socket.emit('ia-born');
-        console.log('[APP] Big Bang en mundo nuevo NO origen, solo se avisa al backend');
+        if (!iaBorn) {
+          socket.emit('ia-born');
+          iaBorn = true;
+          console.log('[APP] Big Bang en mundo nuevo NO origen, solo se avisa al backend');
+        }
       }
     }).catch((error) => {
       console.error('Error durante el Big Bang:', error);
@@ -188,8 +205,17 @@ export async function init(element: Element) {
   } else {
     // Mundo ya existente: solo fondo disperso
     background.showAllStarsInstantly();
-    socket.emit('ia-born');
-    console.log('[APP] Solo se muestra fondo disperso y se avisa al backend');
+    // Solo emitir ia-born si la IA no ha nacido globalmente (según backend)
+    if (!iaBorn) {
+      socket.emit('ia-born');
+      iaBorn = true;
+      console.log('[APP] Solo se muestra fondo disperso y se avisa al backend');
+    }
+    // Si la IA ya nació globalmente, solo agregarla si el backend la asigna explícitamente (por ia-change-world)
+    // Eliminar cualquier IA duplicada antes de agregar
+    if (iaCharacter && mainScreen.children.includes(iaCharacter)) {
+      mainScreen.removeChild(iaCharacter);
+    }
   }
 
   // Ticker global para actualizar el movimiento de la IA si está en el escenario

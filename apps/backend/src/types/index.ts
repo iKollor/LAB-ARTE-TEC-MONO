@@ -4,6 +4,7 @@ export interface World {
     name?: string;
     isOrigin?: boolean; // Indica si es el mundo original
     iaBorn?: boolean; // Indica si la IA ya nació en este mundo
+    pendingDestroy?: boolean; // Indica si el mundo está pendiente de destrucción
 }
 
 export interface Session {

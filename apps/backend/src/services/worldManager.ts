@@ -63,20 +63,38 @@ export class WorldManager {
             const worldId = session.worldId;
             const stillActive = Array.from(this.sessions.values()).some(s => s.worldId === worldId);
             if (!stillActive) {
+                // Marcar el mundo como pendiente de destrucción
+                const world = this.worlds.get(worldId);
+                if (world) {
+                    world.pendingDestroy = true;
+                }
                 // Si ya hay un timeout, no lo dupliques
                 if (!this.worldDeleteTimeouts.has(worldId)) {
                     const timeout = setTimeout(() => {
                         this.deleteWorld(worldId);
                         this.worldDeleteTimeouts.delete(worldId);
                         console.log(`Mundo eliminado tras 20s de inactividad: ${worldId}`);
+                        // Detener intervalos de IA si ya no quedan mundos activos
+                        try {
+                            const { stopIAIntervalsIfNoWorlds } = require('../../socket/index');
+                            if (typeof stopIAIntervalsIfNoWorlds === 'function') {
+                                stopIAIntervalsIfNoWorlds();
+                            }
+                        } catch (e) {
+                            // Si no se puede requerir, ignorar (evita crash en test)
+                        }
                     }, DELAY_TO_DELETE_WORLD); // 20 segundos de gracia
                     this.worldDeleteTimeouts.set(worldId, timeout);
                 }
             } else {
-                // Si alguien se reconecta antes de eliminar, limpia el timeout
+                // Si alguien se reconecta antes de eliminar, limpia el timeout y quita el flag
                 if (this.worldDeleteTimeouts.has(worldId)) {
                     clearTimeout(this.worldDeleteTimeouts.get(worldId));
                     this.worldDeleteTimeouts.delete(worldId);
+                }
+                const world = this.worlds.get(worldId);
+                if (world) {
+                    world.pendingDestroy = false;
                 }
             }
         }
