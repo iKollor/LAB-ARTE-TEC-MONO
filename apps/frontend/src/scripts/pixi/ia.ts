@@ -8,11 +8,31 @@ import { MultiAnimatedSprite } from './ParseAsepriteAnimationSheet';
 // Variable para controlar el tamaño del personaje IA
 export const CHARACTER_SCALE = 3; // Cambia este valor para ajustar el tamaño
 
+// Métodos para encapsular aparición/desaparición en el escenario
+import type { Container } from 'pixi.js';
+
 export class IACharacter extends MultiAnimatedSprite {
     name: string;
     hp: number;
     speed: number;
     lastDirection: string = 'South';
+    /**
+     * Añade la IA al contenedor si no está ya presente
+     */
+    show(container: Container) {
+        if (!container.children.includes(this)) {
+            container.addChild(this);
+        }
+    }
+
+    /**
+     * Elimina la IA del contenedor si está presente
+     */
+    hide(container: Container) {
+        if (container.children.includes(this)) {
+            container.removeChild(this);
+        }
+    }
 
     private patrolPoints: { x: number, y: number }[] = [];
     private currentPatrolIndex: number = 0;

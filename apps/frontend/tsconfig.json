@@ -14,13 +14,9 @@
         "name": "@astrojs/ts-plugin"
       },
     ],
+    "baseUrl": ".",
     "paths": {
-      "@": [
-        "./src"
-      ],
-      "@/*": [
-        "./src/*"
-      ],
+      "@scripts/*": ["src/scripts/*"],
     }
   }
 }

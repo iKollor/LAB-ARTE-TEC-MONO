@@ -1,197 +1,194 @@
+import { IAState } from '../../controller/IAState';
 import { Application, Container } from 'pixi.js';
 import { StarryBackground } from './background';
 import { IACharacter } from './ia';
 import { loadAsepriteSheet } from './ParseAsepriteAnimationSheet';
-import socket from '../socket';
+import { SocketController } from '../../controller/SocketController';
+import { WorldsController } from '../../controller/WorldsController';
+import { MicrophoneController } from '../../controller/MicrophoneController';
 
-let pixiApp: Application | null = null;
-let showNacimiento = false;
-let iaCharacter: IACharacter | null = null;
-let iaTargetPosition: { x: number, y: number } | null = null;
-let mainScreen: Container;
-let worldExist = false;
-let iaBorn = false;
-let worldAssignedData: any = null;
+/**
+ * Gestor principal de la app Pixi. Orquesta la escena, IA y controladores.
+ */
+export class PixiAppManager {
+  public iaState: IAState;
+  private pixiApp: Application | null = null;
+  private iaCharacter: IACharacter | null = null;
+  private iaTargetPosition: { x: number, y: number } | null = null;
+  private mainScreen!: Container;
+  private options: { element: Element };
 
-// Escuchar eventos de control de IA desde el backend
-socket.on('ia-move', (data) => {
-  if (iaCharacter && data.position) {
-    iaTargetPosition = { ...data.position };
-    if (showNacimiento) console.log('[FRONT] Recibido ia-move:', data);
-  }
-});
-socket.on('ia-speak', (data) => {
-  if (iaCharacter && data.text && showNacimiento) console.log('IA dice:', data.text);
-});
-socket.on('ia-listen', () => {
-  if (iaCharacter && showNacimiento) console.log('IA está escuchando...');
-});
-socket.on('ia-change-world', (data) => {
-  if (!iaCharacter || !mainScreen) return;
-  const myWorldId = localStorage.getItem('worldId');
-  const iaInStage = mainScreen.children.includes(iaCharacter);
-  if (data.worldId === myWorldId && iaBorn) {
-    if (!iaInStage) {
-      mainScreen.addChild(iaCharacter);
-      console.log('[FRONT] IA agregada al mainScreen (cambio de mundo):', data.worldId);
-    }
-  } else if (iaInStage) {
-    mainScreen.removeChild(iaCharacter);
-    console.log('[FRONT] IA eliminada del mainScreen (cambio de mundo):', data.worldId);
-  }
-  if (!iaBorn && iaInStage) {
-    mainScreen.removeChild(iaCharacter);
-    console.log('[FRONT] IA eliminada del mainScreen porque iaBorn es false');
-  }
-});
-socket.on('ia-interact', (data) => {
-  if (iaCharacter && data.target && showNacimiento) console.log('IA interactúa con:', data.target);
-});
-socket.on('world-assigned', (data) => {
-  showNacimiento = !!data.isOrigin;
-  worldExist = !!data.worldExist;
-  iaBorn = !!data.iaBorn;
-  localStorage.setItem('worldId', data.worldId);
-  worldAssignedData = data;
-  if (!iaBorn && iaCharacter && mainScreen && mainScreen.children.includes(iaCharacter)) {
-    mainScreen.removeChild(iaCharacter);
-    console.log('[FRONT] IA eliminada del mainScreen por world-assigned: iaBorn es false');
-  }
-  console.log('[FRONT] world-assigned:', data, 'showNacimiento:', showNacimiento, 'worldExist:', worldExist, 'iaBorn:', iaBorn);
-});
+  // Controladores públicos para acceso externo (readonly para evitar reasignación accidental)
+  public readonly socketController: SocketController;
+  public worldsController: WorldsController;
+  public readonly microphoneController: MicrophoneController;
 
-export async function init(element: Element) {
-  // Esperar a que world-assigned esté listo
-  if (!worldAssignedData) {
-    await new Promise(resolve => {
-      const handler = (data: any) => {
-        worldAssignedData = data;
-        socket.off('world-assigned', handler);
-        resolve(null);
-      };
-      socket.on('world-assigned', handler);
+  // Evita múltiples animaciones de nacimiento
+  private _iaBornHandled = false;
+
+  constructor(
+    options: { element: Element },
+    socketController: SocketController,
+    worldsController: WorldsController,
+    microphoneController: MicrophoneController,
+    iaState: IAState
+  ) {
+    this.options = options;
+    this.socketController = socketController;
+    this.worldsController = worldsController;
+    this.microphoneController = microphoneController;
+    this.iaState = iaState;
+    // Eventos de socket
+    this._setupSocketEvents();
+  }
+
+  /**
+   * Configura los listeners de socket para la IA y el mundo.
+   */
+  private _setupSocketEvents() {
+    const socket = this.socketController.getSocket();
+    socket.on('ia-born', this._updateIAVisibility.bind(this));
+    socket.on('ia-born-request', () => this._handleIABornRequest());
+    socket.on('ia-change-world', (payload: { iaCurrentWorld?: string }) => {
+      if (this.microphoneController.isMicActive()) {
+        console.warn('[PixiAppManager] Ignorado ia-change-world porque el micrófono está activo');
+        return;
+      }
+      if (payload?.iaCurrentWorld) {
+        this.iaState.currentWorld = payload.iaCurrentWorld;
+        console.log(`[IAState] currentWorld actualizado: ${payload.iaCurrentWorld}`);
+      }
+      this._updateIAVisibility();
     });
-    showNacimiento = !!worldAssignedData.isOrigin;
-    worldExist = !!worldAssignedData.worldExist;
-    iaBorn = !!worldAssignedData.iaBorn;
   }
 
-  // Si ya existe una instancia previa, destrúyela
-  if (pixiApp) {
-    pixiApp.destroy(true, { children: true, texture: true });
-    pixiApp.canvas.parentNode?.removeChild(pixiApp.canvas);
-    pixiApp = null;
+  /**
+   * Actualiza la visibilidad de la IA usando solo currentWorld
+   */
+  private _updateIAVisibility() {
+    if (!this.iaCharacter) return;
+    const userWorldId = this.worldsController.getCurrentWorldId();
+    const iaWorldId = this.iaState.currentWorld;
+    const visible = !!iaWorldId && userWorldId === iaWorldId;
+    this.iaCharacter[visible ? 'show' : 'hide'](this.mainScreen);
+    this.microphoneController.setMicState({ canUse: visible });
+    console.log(`[PixiAppManager] IA ${visible ? 'mostrada' : 'oculta'} (currentWorld=${iaWorldId}, userWorldId=${userWorldId})`);
   }
 
-  // Inicializar aplicación PIXI con configuración optimizada
-  const app = new Application();
-  await app.init({
-    resolution: 1, // Reducir resolución para mejorar rendimiento
-    antialias: false, // Desactivar antialias para dispositivos lentos
-    backgroundColor: 0x000000, // Color de fondo
-    powerPreference: 'low-power', // Optimizar para dispositivos de bajo rendimiento
-    resizeTo: window, // Ajustar tamaño automáticamente
-  });
-  pixiApp = app;
-
-  // Adjuntar el canvas al DOM ANTES de cualquier animación
-  app.canvas.classList.add('pixi');
-  element.appendChild(app.canvas);
-
-  // Crear contenedor principal
-  mainScreen = new Container();
-
-  // Agregar fondo estrellado
-  const background = new StarryBackground(app);
-
-  // Eliminar filtro Glow del fondo de estrellas
-  background.filters = [];
-
-  mainScreen.addChild(background);
-
-  // Optimizar lógica de actualización
-  app.ticker.add(() => {
-    if (!document.hidden) {
-      background.update();
-    }
-  });
-
-  // Agregar mainScreen al escenario
-  app.stage.addChild(mainScreen);
-
-  // Limitar la tasa de fotogramas
-  app.ticker.maxFPS = 60;
-
-  // Pausar el ticker si la pestaña está inactiva
-  document.addEventListener('visibilitychange', () => {
-    if (document.hidden) {
-      app.ticker.stop();
-    } else {
-      app.ticker.start();
-    }
-  });
-
-  // Limpiar Pixi al descargar la página
-  window.addEventListener('beforeunload', () => {
-    if (pixiApp) {
-      pixiApp.destroy(true, { children: true, texture: true });
-      pixiApp.canvas.parentNode?.removeChild(pixiApp.canvas);
-      pixiApp = null;
-    }
-  });
-
-  console.log(showNacimiento, 'showNacimiento');
-
-  // Cargar el spritesheet y crear la IA
-  const spritesheet = await loadAsepriteSheet('IA', '/prototype_character.json');
-  iaCharacter = new IACharacter(
-    app.renderer.width / 2,
-    app.renderer.height / 2,
-    spritesheet,
-    'IACharacter',
-    100,
-    2
-  );
-
-  // Mostrar animación o solo estrellas según flags del backend
-  if (!worldExist) {
-    // Mundo nuevo: mostrar Big Bang
-    background.waitForBigBang().then(() => {
-      if (showNacimiento && !iaBorn) {
-        // Mundo nuevo y de origen: implosión + nacimiento IA
-        background.triggerImplosion().then(() => {
-          if (iaCharacter && !mainScreen.children.includes(iaCharacter)) mainScreen.addChild(iaCharacter);
-          if (!iaBorn) {
-            socket.emit('ia-born');
-            iaBorn = true;
-            console.log('[APP] Evento ia-born emitido al backend (origen)');
-          }
-        }).catch(console.error);
-      } else if (!iaBorn) {
-        socket.emit('ia-born');
-        iaBorn = true;
-        console.log('[APP] Big Bang en mundo nuevo NO origen, solo se avisa al backend');
+  /**
+   * Handler robusto para el nacimiento de la IA, solo ejecuta una vez.
+   */
+  private async _handleIABornRequest() {
+    if (this._iaBornHandled) return;
+    this._iaBornHandled = true;
+    if (!this.iaCharacter || !this.mainScreen) return;
+    try {
+      const background = this.mainScreen.children.find(c => c instanceof StarryBackground) as StarryBackground | undefined;
+      if (background) {
+        await background.waitForBigBang();
+        this.socketController.getSocket().emit('client-ready');
+        await background.triggerImplosion();
       }
-    }).catch(console.error);
-  } else {
-    background.showAllStarsInstantly();
-    if (!iaBorn) {
-      socket.emit('ia-born');
-      iaBorn = true;
-      console.log('[APP] Solo se muestra fondo disperso y se avisa al backend');
+      this.iaCharacter.show(this.mainScreen);
+      this._updateIAVisibility();
+      this.iaState.born = true;
+      this.socketController.emitIABorn();
+      console.log('[PixiAppManager] [SOCKET] Animación de nacimiento terminada, emitido ia-born al backend');
+    } catch (err) {
+      console.error('[PixiAppManager] [SOCKET] Error en animación de nacimiento IA:', err);
     }
-    if (iaCharacter && mainScreen.children.includes(iaCharacter)) mainScreen.removeChild(iaCharacter);
   }
 
-  // Ticker global para actualizar el movimiento de la IA si está en el escenario
-  app.ticker.add(() => {
-    if (iaCharacter && mainScreen.children.includes(iaCharacter)) {
-      if (iaTargetPosition) {
-        const arrived = iaCharacter.updateMovementOrIdle(app.ticker.deltaMS, iaTargetPosition);
-        if (arrived) iaTargetPosition = null;
+  // Ya no se necesita setupSocketEvents, el worldController se pasa desde fuera y está sincronizado
+
+  public async init() {
+    this.destroy();
+    const app = new Application();
+    await app.init({
+      resolution: 1,
+      antialias: false,
+      backgroundColor: 0x000000,
+      powerPreference: 'low-power',
+      resizeTo: window,
+    });
+    this.pixiApp = app;
+    app.canvas.classList.add('pixi');
+    this.options.element.appendChild(app.canvas);
+    this.mainScreen = new Container();
+    const background = new StarryBackground(app);
+    background.filters = [];
+    this.mainScreen.addChild(background);
+    app.ticker.add(() => {
+      if (!document.hidden) {
+        background.update();
+      }
+    });
+    app.stage.addChild(this.mainScreen);
+    app.ticker.maxFPS = 60;
+    document.addEventListener('visibilitychange', () => {
+      if (document.hidden) {
+        app.ticker.stop();
       } else {
-        iaCharacter.updateMovementOrIdle(app.ticker.deltaMS, null);
+        app.ticker.start();
       }
+    });
+    window.addEventListener('beforeunload', () => this.destroy());
+    // (isOrigin solo para debug, no afecta la lógica principal)
+    // Instanciar la IA antes de emitir client-ready
+    const spritesheet = await loadAsepriteSheet('IA', '/prototype_character.json');
+    this.iaCharacter = new IACharacter(
+      app.renderer.width / 2,
+      app.renderer.height / 2,
+      spritesheet,
+      'IACharacter',
+      100,
+      2
+    );
+    // Ocultar IA por defecto hasta que llegue 'ia-born-request'
+    if (this.iaCharacter) this.iaCharacter.hide(this.mainScreen);
+    // Esperar a que termine el Big Bang y emitir client-ready
+    await background.waitForBigBang();
+    this.socketController.getSocket().emit('client-ready');
+    console.log('[PixiAppManager] [SOCKET] Emitido client-ready tras Big Bang (init)');
+    // Lógica limpia: solo preparar escena, la animación de nacimiento y el aviso al backend se hacen SOLO en el handler de 'ia-born-request'.
+    if (!this.worldsController) return;
+    app.ticker.add(() => {
+      if (this.iaCharacter && this.mainScreen.children.includes(this.iaCharacter)) {
+        if (this.iaTargetPosition) {
+          const arrived = this.iaCharacter.updateMovementOrIdle(app.ticker.deltaMS, this.iaTargetPosition);
+          if (arrived) this.iaTargetPosition = null;
+        } else {
+          this.iaCharacter.updateMovementOrIdle(app.ticker.deltaMS, null);
+        }
+      }
+    });
+  }
+  public setIATargetPosition(pos: { x: number, y: number } | null) {
+    this.iaTargetPosition = pos;
+  }
+  public getPixiApp() {
+    return this.pixiApp;
+  }
+  public getMainScreen() {
+    return this.mainScreen;
+  }
+  public getIACharacter() {
+    return this.iaCharacter;
+  }
+
+  /**
+   * Limpia la aplicación Pixi y elimina el canvas del DOM.
+   */
+  public destroy() {
+    if (this.pixiApp) {
+      this.pixiApp.destroy(true, { children: true, texture: true });
+      if (this.pixiApp.canvas && this.pixiApp.canvas.parentNode) {
+        this.pixiApp.canvas.parentNode.removeChild(this.pixiApp.canvas);
+      }
+      this.pixiApp = null;
     }
-  });
+    this.iaCharacter = null;
+    this.iaTargetPosition = null;
+  }
 }
+
