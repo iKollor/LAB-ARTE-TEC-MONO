@@ -4,7 +4,7 @@ import { StarryBackground } from './background';
 import { IACharacter } from './ia';
 import { loadAsepriteSheet } from './ParseAsepriteAnimationSheet';
 import { SocketController } from '../../controller/SocketController';
-import { WorldsController } from '../../controller/WorldsController';
+import { WorldController } from '../../controller/WorldController';
 import { MicrophoneController } from '../../controller/MicrophoneController';
 
 /**
@@ -20,7 +20,7 @@ export class PixiAppManager {
 
   // Controladores públicos para acceso externo (readonly para evitar reasignación accidental)
   public readonly socketController: SocketController;
-  public worldsController: WorldsController;
+  public worldController: WorldController;
   public readonly microphoneController: MicrophoneController;
 
   // Evita múltiples animaciones de nacimiento
@@ -29,13 +29,13 @@ export class PixiAppManager {
   constructor(
     options: { element: Element },
     socketController: SocketController,
-    worldsController: WorldsController,
+    worldController: WorldController,
     microphoneController: MicrophoneController,
     iaState: IAState
   ) {
     this.options = options;
     this.socketController = socketController;
-    this.worldsController = worldsController;
+    this.worldController = worldController;
     this.microphoneController = microphoneController;
     this.iaState = iaState;
     // Eventos de socket
@@ -67,7 +67,7 @@ export class PixiAppManager {
    */
   private _updateIAVisibility() {
     if (!this.iaCharacter) return;
-    const userWorldId = this.worldsController.getCurrentWorldId();
+    const userWorldId = this.worldController.getCurrentWorldId();
     const iaWorldId = this.iaState.currentWorld;
     const visible = !!iaWorldId && userWorldId === iaWorldId;
     this.iaCharacter[visible ? 'show' : 'hide'](this.mainScreen);
@@ -105,7 +105,7 @@ export class PixiAppManager {
     // ...existing code...
     // Tras la animación, si la IA ya nació en el backend, mostrarla y habilitar el micrófono si corresponde
     if (this.iaCharacter) {
-      const userWorldId = this.worldsController.getCurrentWorldId();
+      const userWorldId = this.worldController.getCurrentWorldId();
       const iaWorldId = this.iaState.currentWorld;
       const iaPresente = !!iaWorldId && userWorldId === iaWorldId && this.iaState.born;
       if (iaPresente) {
@@ -165,7 +165,7 @@ export class PixiAppManager {
 
     // Tras la animación, si la IA ya nació en el backend, mostrarla directamente
     if (this.iaCharacter) {
-      const userWorldId = this.worldsController.getCurrentWorldId();
+      const userWorldId = this.worldController.getCurrentWorldId();
       const iaWorldId = this.iaState.currentWorld;
       if (!!iaWorldId && userWorldId === iaWorldId && this.iaState.born) {
         this.iaCharacter.show(this.mainScreen);
@@ -175,7 +175,7 @@ export class PixiAppManager {
     this.socketController.getSocket().emit('client-ready');
     console.log('[PixiAppManager] [SOCKET] Emitido client-ready tras Big Bang (init)');
     // Lógica limpia: solo preparar escena, la animación de nacimiento y el aviso al backend se hacen SOLO en el handler de 'ia-born-request'.
-    if (!this.worldsController) return;
+    if (!this.worldController) return;
     app.ticker.add(() => {
       if (this.iaCharacter && this.mainScreen.children.includes(this.iaCharacter)) {
         if (this.iaTargetPosition) {

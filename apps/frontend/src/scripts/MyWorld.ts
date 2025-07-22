@@ -1,7 +1,7 @@
 import { PixiAppManager } from "../scripts/pixi/app";
 import { SocketHandlers } from "../scripts/socketHandlers";
 import { SocketController } from "../controller/SocketController";
-import { WorldsController } from "../controller/WorldsController";
+import { WorldController } from "../controller/WorldController";
 import { MicrophoneController } from "../controller/MicrophoneController";
 import { IAState } from "../controller/IAState";
 
@@ -29,7 +29,7 @@ window.addEventListener("DOMContentLoaded", async () => {
         localStorage.setItem("worldData", JSON.stringify(worldData));
 
         // Inicializa los controllers con el mundo asignado
-        const worldsController = new WorldsController(worldData);
+        const worldController = new WorldController(worldData);
         const micBtn = document.getElementById("mic-btn") as HTMLButtonElement;
         const micIcon = document.getElementById("mic-icon") as HTMLImageElement;
         if (!micBtn || !micIcon) {
@@ -49,9 +49,9 @@ window.addEventListener("DOMContentLoaded", async () => {
         // Registrar en window para acceso global desde iaPopup
         (window as any).microphoneController = microphoneController;
 
-        const manager = new PixiAppManager({ element: container }, socketController, worldsController, microphoneController, iaState);
+        const manager = new PixiAppManager({ element: container }, socketController, worldController, microphoneController, iaState);
         await manager.init();
-        const socketHandlers = new SocketHandlers(manager.socketController, manager.microphoneController, manager.worldsController, iaState);
+        const socketHandlers = new SocketHandlers(manager.socketController, manager.microphoneController, manager.worldController, iaState);
         socketHandlers.setPixiManager(manager);
         socketHandlers.register();
         // Sincroniza el micrófono tras la animación y aparición de la IA

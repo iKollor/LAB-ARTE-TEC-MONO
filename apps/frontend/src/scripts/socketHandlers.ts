@@ -5,7 +5,7 @@ import { MicrophoneController } from "../controller/MicrophoneController";
 // Nueva integración para movimiento de IA
 import { PixiAppManager } from "./pixi/app";
 
-import { WorldsController } from "../controller/WorldsController";
+import { WorldController } from "../controller/WorldController";
 
 
 
@@ -19,7 +19,7 @@ export class SocketHandlers {
     constructor(
         private socketController: SocketController,
         private microphoneController: MicrophoneController,
-        private worldsController: WorldsController,
+        private worldController: WorldController,
         iaState: IAState
     ) {
         this.iaState = iaState;
@@ -36,7 +36,7 @@ export class SocketHandlers {
         socket.on("ia-processing", () => {
             this.microphoneController.setMicState({ canUse: false });
             console.log('[FRONT][MIC] Micrófono deshabilitado por procesamiento IA');
-            if (this.iaState.currentWorld !== this.worldsController.getCurrentWorldId()) return;
+            if (this.iaState.currentWorld !== this.worldController.getCurrentWorldId()) return;
             mostrarMensajeIA("Procesando...", false);
         });
         if (typeof socket.off === "function") {
@@ -44,7 +44,7 @@ export class SocketHandlers {
         }
         socket.on("world-assigned", (worldData: any) => {
             if (worldData && worldData.id) {
-                this.worldsController.setWorld(worldData);
+                this.worldController.setWorld(worldData);
             }
             // Actualizar IAState si viene del backend
             if (worldData && worldData.aiState) {
@@ -55,7 +55,7 @@ export class SocketHandlers {
             console.log('[FRONT][SYNC] IAState:', {
                 born: this.iaState.born,
                 currentWorld: this.iaState.currentWorld,
-                frontendWorld: this.worldsController.getCurrentWorldId()
+                frontendWorld: this.worldController.getCurrentWorldId()
             });
             this.updateMicState();
         });
@@ -63,7 +63,7 @@ export class SocketHandlers {
             this.updateMicState();
         });
         socket.on("ia-speak", (payload: { text: string; worldId?: string; turnId?: string }) => {
-            const currentWorldId = this.worldsController.getCurrentWorldId();
+            const currentWorldId = this.worldController.getCurrentWorldId();
             console.log('[FRONT][EVENT] ia-speak recibido:', payload, 'iaState.currentWorld:', this.iaState.currentWorld, 'frontendWorld:', currentWorldId);
             // Mostrar SIEMPRE el mensaje para depuración, aunque el mundo no coincida
             if (this.iaState.currentWorld !== currentWorldId) {
@@ -76,14 +76,14 @@ export class SocketHandlers {
             this.microphoneController.enableMic();
         });
         socket.on("ia-turn", (payload: { worldId?: string; turnId?: string }) => {
-            const currentWorldId = this.worldsController.getCurrentWorldId();
+            const currentWorldId = this.worldController.getCurrentWorldId();
             if (this.iaState.currentWorld !== currentWorldId) return;
             if (payload.turnId && this.iaCurrentTurnId && payload.turnId !== this.iaCurrentTurnId) return;
         });
         socket.on("mic-global-state", (data) => {
             if (isIaPopupVisible()) return;
             // Solo permitir micrófono si la IA está en este mundo
-            const canUse = this.iaState.currentWorld === this.worldsController.getCurrentWorldId();
+            const canUse = this.iaState.currentWorld === this.worldController.getCurrentWorldId();
             this.microphoneController.setMicState({ canUse });
             this.microphoneController.getState().globalMicActive = !!data.active;
             if (this.microphoneController.getState().globalMicActive && this.microphoneController.getState().micOn) {
@@ -102,7 +102,7 @@ export class SocketHandlers {
 
     public updateMicState() {
         // Solo permitir micrófono si la IA está en este mundo
-        const canUse = this.iaState.currentWorld === this.worldsController.getCurrentWorldId();
+        const canUse = this.iaState.currentWorld === this.worldController.getCurrentWorldId();
         this.microphoneController.setMicState({ canUse });
         this.microphoneController.updateMicIcon();
         this.microphoneController.setMicTimer(null);
