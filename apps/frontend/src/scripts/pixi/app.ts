@@ -102,6 +102,19 @@ export class PixiAppManager {
   // Ya no se necesita setupSocketEvents, el worldController se pasa desde fuera y está sincronizado
 
   public async init() {
+    // ...existing code...
+    // Tras la animación, si la IA ya nació en el backend, mostrarla y habilitar el micrófono si corresponde
+    if (this.iaCharacter) {
+      const userWorldId = this.worldsController.getCurrentWorldId();
+      const iaWorldId = this.iaState.currentWorld;
+      const iaPresente = !!iaWorldId && userWorldId === iaWorldId && this.iaState.born;
+      if (iaPresente) {
+        this.iaCharacter.show(this.mainScreen);
+        this.microphoneController.setMicState({ canUse: true });
+      } else {
+        this.microphoneController.setMicState({ canUse: false });
+      }
+    }
     this.destroy();
     const app = new Application();
     await app.init({
@@ -144,10 +157,21 @@ export class PixiAppManager {
       100,
       2
     );
-    // Ocultar IA por defecto hasta que llegue 'ia-born-request'
+    // Siempre ocultar la IA al iniciar
     if (this.iaCharacter) this.iaCharacter.hide(this.mainScreen);
+
     // Esperar a que termine el Big Bang y emitir client-ready
     await background.waitForBigBang();
+
+    // Tras la animación, si la IA ya nació en el backend, mostrarla directamente
+    if (this.iaCharacter) {
+      const userWorldId = this.worldsController.getCurrentWorldId();
+      const iaWorldId = this.iaState.currentWorld;
+      if (!!iaWorldId && userWorldId === iaWorldId && this.iaState.born) {
+        this.iaCharacter.show(this.mainScreen);
+      }
+    }
+
     this.socketController.getSocket().emit('client-ready');
     console.log('[PixiAppManager] [SOCKET] Emitido client-ready tras Big Bang (init)');
     // Lógica limpia: solo preparar escena, la animación de nacimiento y el aviso al backend se hacen SOLO en el handler de 'ia-born-request'.

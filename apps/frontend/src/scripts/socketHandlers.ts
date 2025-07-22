@@ -32,8 +32,10 @@ export class SocketHandlers {
 
     public register() {
         const socket = this.socketController.getSocket();
-        // Mostrar mensaje de procesamiento IA solo cuando corresponde
+        // Unifica el manejo de ia-processing: deshabilita micrófono y muestra mensaje solo si la IA está en este mundo
         socket.on("ia-processing", () => {
+            this.microphoneController.setMicState({ canUse: false });
+            console.log('[FRONT][MIC] Micrófono deshabilitado por procesamiento IA');
             if (this.iaState.currentWorld !== this.worldsController.getCurrentWorldId()) return;
             mostrarMensajeIA("Procesando...", false);
         });
@@ -46,8 +48,15 @@ export class SocketHandlers {
             }
             // Actualizar IAState si viene del backend
             if (worldData && worldData.aiState) {
+                this.iaState.born = worldData.aiState.iaBorn;
                 this.iaState.currentWorld = worldData.aiState.currentWorld || '';
             }
+            // Log de depuración para verificar sincronización IA
+            console.log('[FRONT][SYNC] IAState:', {
+                born: this.iaState.born,
+                currentWorld: this.iaState.currentWorld,
+                frontendWorld: this.worldsController.getCurrentWorldId()
+            });
             this.updateMicState();
         });
         socket.on("ia-change-world", () => {
@@ -55,9 +64,16 @@ export class SocketHandlers {
         });
         socket.on("ia-speak", (payload: { text: string; worldId?: string; turnId?: string }) => {
             const currentWorldId = this.worldsController.getCurrentWorldId();
-            // Solo mostrar mensaje si la IA está en este mundo
-            if (this.iaState.currentWorld !== currentWorldId) return;
+            console.log('[FRONT][EVENT] ia-speak recibido:', payload, 'iaState.currentWorld:', this.iaState.currentWorld, 'frontendWorld:', currentWorldId);
+            // Mostrar SIEMPRE el mensaje para depuración, aunque el mundo no coincida
+            if (this.iaState.currentWorld !== currentWorldId) {
+                console.warn('[FRONT][EVENT] ia-speak ignorado por mundo:', this.iaState.currentWorld, currentWorldId);
+                mostrarMensajeIA(`[DEBUG][MUNDO NO COINCIDE] ${payload.text}`, true);
+                this.microphoneController.enableMic();
+                return;
+            }
             mostrarMensajeIA(payload.text, true);
+            this.microphoneController.enableMic();
         });
         socket.on("ia-turn", (payload: { worldId?: string; turnId?: string }) => {
             const currentWorldId = this.worldsController.getCurrentWorldId();
@@ -84,7 +100,7 @@ export class SocketHandlers {
         });
     }
 
-    private updateMicState() {
+    public updateMicState() {
         // Solo permitir micrófono si la IA está en este mundo
         const canUse = this.iaState.currentWorld === this.worldsController.getCurrentWorldId();
         this.microphoneController.setMicState({ canUse });

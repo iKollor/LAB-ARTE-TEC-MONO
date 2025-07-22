@@ -55,8 +55,11 @@ export class SessionWorldHandler {
         const isOrigin = !!world.isOrigin;
         // Enviar el estado completo de la IA junto con el mundo asignado
         const aiState = this.aiManager ? this.aiManager.getState() : undefined;
-        console.log('[BACKEND] Emitiendo world-assigned:', { id: worldId, isOrigin, worldExist, aiState });
+        console.log('[BACKEND][SOCKET] Emitiendo world-assigned:', { id: worldId, isOrigin, worldExist, aiState });
         socket.emit('world-assigned', { id: worldId, isOrigin, worldExist, aiState });
+        socket.on('ia-speak', (payload) => {
+            console.log('[BACKEND][SOCKET] ia-speak emitido:', payload);
+        });
         // Esperar a que el cliente indique que está listo (tras bigbang) para emitir ia-born-request
         socket.on('client-ready', () => {
             // Solo emitir ia-born-request si la IA no ha nacido
@@ -67,6 +70,15 @@ export class SessionWorldHandler {
                 console.log('[SessionWorldHandler] ia-born-request emitido al cliente tras client-ready');
             }
         });
+
+        // Reduce el timeout de destrucción de mundo a 30 segundos
+        if (this.worldsManager && typeof this.worldsManager === 'object') {
+            // Si existe la propiedad, modifícala directamente
+            if ('destroyTimeoutMs' in this.worldsManager) {
+                (this.worldsManager as any).destroyTimeoutMs = 30000;
+                console.log('[BACKEND][WORLD-MANAGER] Timeout de destrucción de mundo ajustado a 30 segundos');
+            }
+        }
 
         // Marcar la IA como nacida cuando el frontend lo notifica y arrancar movimiento aleatorio
         socket.on('ia-born', () => {

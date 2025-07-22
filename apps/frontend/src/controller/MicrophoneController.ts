@@ -8,6 +8,34 @@ export interface MicrophoneState {
 }
 
 export class MicrophoneController {
+    // Deshabilita el micrófono y actualiza la UI
+    public disableMic() {
+        this.canUseMic = false;
+        this.iaInThisWorld = false;
+        this.stopRecording();
+        this.setMicTimer('BUSY', 'orange');
+        if (this.btn) {
+            this.btn.disabled = true;
+            this.btn.style.opacity = "0.5";
+            this.btn.style.cursor = "default";
+        }
+        this.updateMicIcon();
+        console.log('[MIC][UI] Micrófono deshabilitado (disableMic)');
+    }
+
+    // Habilita el micrófono y actualiza la UI
+    public enableMic() {
+        this.canUseMic = true;
+        this.iaInThisWorld = true;
+        if (this.btn) {
+            this.btn.disabled = false;
+            this.btn.style.opacity = "1";
+            this.btn.style.cursor = "pointer";
+        }
+        this.setMicTimer(null);
+        this.updateMicIcon();
+        console.log('[MIC][UI] Micrófono habilitado (enableMic)');
+    }
     /**
      * Indica si el micrófono está actualmente activo (grabando).
      */
@@ -37,6 +65,23 @@ export class MicrophoneController {
     public setMicState({ canUse }: { canUse: boolean }) {
         this.canUseMic = canUse;
         this.iaInThisWorld = canUse;
+        if (!canUse) {
+            this.stopRecording();
+            this.setMicTimer('BUSY', 'orange');
+            if (this.btn) {
+                this.btn.disabled = true;
+                this.btn.style.opacity = "0.5";
+                this.btn.style.cursor = "default";
+                console.log('[MIC][UI] Botón de micrófono deshabilitado por procesamiento IA');
+            }
+        } else {
+            if (this.btn) {
+                this.btn.disabled = false;
+                this.btn.style.opacity = "1";
+                this.btn.style.cursor = "pointer";
+                console.log('[MIC][UI] Botón de micrófono habilitado');
+            }
+        }
         this.updateMicIcon();
     }
     public getState(): MicrophoneState {
@@ -137,6 +182,7 @@ export class MicrophoneController {
         const worldId = localStorage.getItem("worldId") || "";
         this.socket.emit("mic-state", { active: false, worldId });
         this.resetMicUI();
+        this.disableMic();
         if (!this.audioChunks.length || new Blob(this.audioChunks, { type: "audio/webm" }).size === 0) {
             this.handleError("No se grabó audio válido. Intenta de nuevo.");
             return;

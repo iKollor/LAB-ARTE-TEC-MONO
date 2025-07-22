@@ -5,11 +5,11 @@ let typingInterval: ReturnType<typeof setInterval> | null = null;
 
 export function mostrarMensajeIA(text: string, isFinal = false) {
     console.log('[FRONT][IA][RECIBIDO]', text);
-    let chat = document.getElementById("ia-chat") as HTMLDivElement | null;
-    if (!chat) {
-        chat = document.createElement("div");
-        chat.id = "ia-chat";
-        Object.assign(chat.style, {
+    let chatEl = document.getElementById("ia-chat") as HTMLDivElement | null;
+    if (!chatEl) {
+        chatEl = document.createElement("div");
+        chatEl.id = "ia-chat";
+        Object.assign(chatEl.style, {
             position: "absolute",
             bottom: "30px",
             left: "50%",
@@ -22,45 +22,44 @@ export function mostrarMensajeIA(text: string, isFinal = false) {
             maxWidth: "80vw",
             zIndex: "100",
         } as Partial<CSSStyleDeclaration>);
-        document.body.appendChild(chat);
+        document.body.appendChild(chatEl);
+        console.log('[FRONT][IA][DOM] Elemento ia-chat creado');
     }
+    chatEl.style.display = "block";
+    iaPopupVisible = true;
+    iaPopupFinalizado = isFinal;
+    // Manejo de typing y texto
     if (!isFinal) {
-        let typing = chat.querySelector(".typing-indicator") as HTMLSpanElement | null;
+        let typing = chatEl.querySelector(".typing-indicator") as HTMLSpanElement | null;
         if (!typing) {
             typing = document.createElement("span");
             typing.className = "typing-indicator";
             typing.style.marginLeft = "8px";
             typing.style.opacity = "0.7";
             typing.textContent = "";
-            chat.appendChild(typing);
+            chatEl.appendChild(typing);
         }
-        if (chat.childNodes.length > 1) {
-            chat.childNodes[0].textContent = text;
-        } else {
-            chat.textContent = text;
-        }
-        if (typing) {
-            let dots = 0;
-            if (typingInterval) clearInterval(typingInterval);
-            typingInterval = setInterval(() => {
-                dots = (dots + 1) % 4;
-                typing.textContent = " " + ".".repeat(dots);
-            }, 400);
-        }
+        chatEl.textContent = text;
+        chatEl.appendChild(typing);
+        let dots = 0;
+        if (typingInterval) clearInterval(typingInterval);
+        typingInterval = setInterval(() => {
+            dots = (dots + 1) % 4;
+            typing.textContent = " " + ".".repeat(dots);
+        }, 400);
     } else {
         if (typingInterval) clearInterval(typingInterval);
-        const typing = chat.querySelector(".typing-indicator") as HTMLSpanElement | null;
+        const typing = chatEl.querySelector(".typing-indicator") as HTMLSpanElement | null;
         if (typing && typing.parentNode) typing.parentNode.removeChild(typing);
-        chat.textContent = text;
+        chatEl.textContent = text;
     }
-    chat.style.display = "block";
-    iaPopupVisible = true;
-    iaPopupFinalizado = isFinal;
+    chatEl.style.display = "block";
+    // Click para cerrar el popup solo si es final
     if (iaPopupClickHandler) {
         document.removeEventListener("mousedown", iaPopupClickHandler);
     }
     iaPopupClickHandler = function () {
-        if (iaPopupFinalizado && chat) chat.style.display = "none";
+        if (iaPopupFinalizado && chatEl) chatEl.style.display = "none";
         iaPopupVisible = false;
         if (iaPopupClickHandler) {
             document.removeEventListener("mousedown", iaPopupClickHandler);

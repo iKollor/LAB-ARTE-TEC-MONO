@@ -36,21 +36,25 @@ window.addEventListener("DOMContentLoaded", async () => {
             console.error("No se encontró el botón o ícono del micrófono");
             return;
         }
-        // Leer el estado de la IA del backend (solo currentWorld)
+        // Leer el estado completo de la IA del backend
         let iaState: IAState;
         if (worldData.aiState) {
-            iaState = new IAState(false, worldData.aiState.currentWorld || '');
+            iaState = new IAState(worldData.aiState.iaBorn, worldData.aiState.currentWorld || '');
         } else {
             iaState = new IAState();
         }
 
         const microphoneController = new MicrophoneController(socketController.getSocket(), micIcon, micBtn);
         micBtn.addEventListener("click", () => microphoneController.toggleMic());
+        // Registrar en window para acceso global desde iaPopup
+        (window as any).microphoneController = microphoneController;
 
         const manager = new PixiAppManager({ element: container }, socketController, worldsController, microphoneController, iaState);
         await manager.init();
         const socketHandlers = new SocketHandlers(manager.socketController, manager.microphoneController, manager.worldsController, iaState);
         socketHandlers.setPixiManager(manager);
         socketHandlers.register();
+        // Sincroniza el micrófono tras la animación y aparición de la IA
+        socketHandlers.updateMicState();
     });
 });
