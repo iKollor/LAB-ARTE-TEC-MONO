@@ -39,6 +39,11 @@ export class SocketManager {
             this.iaHasBorn = false;
             console.log('[IA] Todos los mundos eliminados, la IA ha sido destruida');
         });
+        // Suscribirse al evento worldsCountChanged para emitirlo por socket
+        this.worldsManager.on('worldsCountChanged', (count: number) => {
+            this.io.emit('worlds-count-changed', { count });
+            console.log(`[SOCKET] worlds-count-changed emitido: ${count}`);
+        });
         // Eliminado: el nacimiento de la IA se maneja solo tras world-assigned en SessionWorldHandler
         this.aiManager = aiManager;
         // Usar el tamaño del Map para determinar sesiones activas

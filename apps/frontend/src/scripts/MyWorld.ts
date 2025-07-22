@@ -4,8 +4,15 @@ import { SocketController } from "../controller/SocketController";
 import { WorldController } from "../controller/WorldController";
 import { MicrophoneController } from "../controller/MicrophoneController";
 import { IAState } from "../controller/IAState";
+import { showWelcomePopup } from "./welcomePopup";
+import { audioLayersManager } from "./AudioLayersManager";
 
 console.log("Inicializando Pixi y SocketHandlers...");
+
+showWelcomePopup(() => {
+    console.log('[POPUP] Usuario hizo clic en Comenzar');
+    audioLayersManager.setLayers(1);
+});
 
 window.addEventListener("DOMContentLoaded", async () => {
     const container = document.getElementById("canvas-container");

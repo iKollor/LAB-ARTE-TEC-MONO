@@ -1,4 +1,3 @@
-
 import { mostrarMensajeIA, isIaPopupVisible } from "./iaPopup";
 import { SocketController } from "../controller/SocketController";
 import { MicrophoneController } from "../controller/MicrophoneController";
@@ -10,6 +9,7 @@ import { WorldController } from "../controller/WorldController";
 
 
 import { IAState } from "../controller/IAState";
+import { audioLayersManager } from "./AudioLayersManager";
 
 export class SocketHandlers {
     private iaCurrentTurnId: string | null = null;
@@ -32,6 +32,11 @@ export class SocketHandlers {
 
     public register() {
         const socket = this.socketController.getSocket();
+        // Suscribirse al evento worlds-count-changed para gestionar capas de audio
+        this.socketController.onWorldsCountChanged(({ count }) => {
+            audioLayersManager.setLayers(count);
+            console.log(`[FRONT][AUDIO] Capas de audio activas: ${count}`);
+        });
         // Unifica el manejo de ia-processing: deshabilita micrófono y muestra mensaje solo si la IA está en este mundo
         socket.on("ia-processing", () => {
             this.microphoneController.setMicState({ canUse: false });

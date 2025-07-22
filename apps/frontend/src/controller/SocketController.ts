@@ -31,4 +31,12 @@ export class SocketController {
     public emitIABorn() {
         this.socket.emit('ia-born');
     }
+
+    // Suscripción a worlds-count-changed con callback tipado
+    public onWorldsCountChanged(callback: (data: { count: number }) => void) {
+        this.socket.on('worlds-count-changed', callback);
+    }
+    public offWorldsCountChanged(callback: (data: { count: number }) => void) {
+        this.socket.off('worlds-count-changed', callback);
+    }
 }

@@ -38,6 +38,8 @@ export class WorldsManager extends EventEmitter {
         worldData.pendingDestroy = false;
         this.worlds.set(worldId, worldData);
         console.log(`[WORLD-MANAGER] createWorld: worldId=${worldId}, isOrigin=${worldData.isOrigin}`);
+        // Emitir evento personalizado con el número de mundos activos
+        this.emit('worldsCountChanged', this.worlds.size);
     }
     // Utilidad para desarrollo: limpiar todos los mundos y sesiones
     resetAll() {
@@ -120,6 +122,9 @@ export class WorldsManager extends EventEmitter {
                 }, DELAY_TO_DELETE_WORLD);
                 this.worldDeleteTimeouts.set(worldId, { timeout, token: timeoutToken });
                 console.log(`[WORLD-MANAGER] Timeout de destrucción programado para mundo ${worldId} [Timeout ${timeoutId}]`);
+                // Emitir worlds-count-changed inmediatamente al desconectarse la sesión
+                const activeWorlds = Array.from(this.worlds.values()).filter(w => !w.pendingDestroy).length;
+                this.emit('worldsCountChanged', activeWorlds);
             }
         } else if (world) {
             if (this.worldDeleteTimeouts.has(worldId)) {
@@ -128,6 +133,9 @@ export class WorldsManager extends EventEmitter {
                 this.worldDeleteTimeouts.delete(worldId);
             }
             world.pendingDestroy = false;
+            // Emitir worlds-count-changed si el mundo sigue activo
+            const activeWorlds = Array.from(this.worlds.values()).filter(w => !w.pendingDestroy).length;
+            this.emit('worldsCountChanged', activeWorlds);
         }
     }
 
