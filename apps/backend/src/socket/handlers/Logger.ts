@@ -29,8 +29,8 @@ export class Logger {
      * @param fromWorldId ID del mundo de origen
      * @param toWorldId ID del mundo destino
      */
-    static logIAMove(fromWorldId: string, toWorldId: string) {
-        console.log(`[IA] La IA se mueve de ${fromWorldId} a ${toWorldId}`);
+    static logIAChangeWorld(fromWorldId: string, toWorldId: string) {
+        console.log(`[IA] La IA cambio del mundo ${fromWorldId} al ${toWorldId}`);
     }
 
     /**
@@ -38,7 +38,7 @@ export class Logger {
      * @param worldId ID del mundo
      * @param position Posición destino {x, y}
      */
-    static logIAMoveInWorld(worldId: string, position: { x: number, y: number }) {
+    static logIAMove(worldId: string, position: { x: number, y: number }) {
         console.log(`[IA] La IA se mueve en el mundo ${worldId} a la posición (${position.x}, ${position.y})`);
     }
 
@@ -48,5 +48,22 @@ export class Logger {
      */
     static logIACurrentWorld(worldId: string) {
         console.log(`[IA] Mundo actual de la IA: ${worldId}`);
+    }
+
+    /**
+     * Log de error de la IA
+     * @param error Mensaje de error
+     */
+    static logIAError(worldId: string, error: string) {
+        console.error(`[IA] Error en el mundo ${worldId}: ${error}`);
+    }
+
+    /**
+     * Log de la acción de la IA al hablar
+     * @param worldId ID del mundo donde la IA habla
+     * @param text Texto que la IA ha hablado
+     */
+    static logIASpeak(worldId: string, text: string) {
+        console.log(`[IA] La IA habla en el mundo ${worldId}: ${text}`);
     }
 }

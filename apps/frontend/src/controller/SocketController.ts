@@ -2,11 +2,19 @@ import { io, Socket } from "socket.io-client";
 
 export class SocketController {
     private socket!: Socket;
-    private BACKEND_URL = "localhost:3000"; // Cambia si usas otro puerto
+    // Detecta el host actual (localhost o IPv4) y el protocolo
+    private BACKEND_URL: string;
 
     constructor(worldId: string | null) {
+        // Detecta el protocolo y host del frontend para conectar al backend
+        const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
+        const host = window.location.hostname;
+        const port = 3000; // Cambia si tu backend usa otro puerto
+        this.BACKEND_URL = `${protocol}://${host}:${port}`;
         this.connect(worldId);
     }
+
+
 
     public connect(worldId: string | null) {
         this.socket = io(this.BACKEND_URL, {

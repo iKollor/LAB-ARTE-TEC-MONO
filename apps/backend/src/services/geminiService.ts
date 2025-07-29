@@ -1,10 +1,14 @@
-import { GoogleGenAI, LiveServerMessage, MediaResolution, Modality, Session, Type, Schema } from '@google/genai';
+import { GoogleGenAI, LiveServerMessage, MediaResolution, Modality, Session, Type, Schema, LiveConnectConfig } from '@google/genai';
 import * as fs from 'node:fs';
 import { WaveFile } from 'wavefile';
 
 // import { emitEvent } from '../socket';
 
 import type { WorldsManager } from './worldsManager';
+import { SocketManager } from '../socket';
+import { AIManager } from './aiManager';
+
+
 
 
 export class GeminiService {
@@ -14,9 +18,30 @@ export class GeminiService {
     // Buffer de mensajes por turno para evitar perder fragmentos rezagados
     private responseQueues: Record<string, LiveServerMessage[]> = {};
     private worldsManager: WorldsManager;
-    private socketManager?: { emitEvent: (event: string, data: any) => void };
+    private socketManager?: SocketManager;
+    private iaManager: AIManager;
 
-    constructor(worldsManager: WorldsManager, socketManager?: { emitEvent: (event: string, data: any) => void }) {
+    /**
+     * Porcentaje restante de cuota disponible (0% = sin cupo, 100% = todo disponible)
+     * Accesible como propiedad pública de la instancia.
+     */
+    private quotaPercent: { tokens: number; requests: number } = { tokens: 100, requests: 100 };
+
+    /**
+     * Devuelve el porcentaje restante de cuota disponible (0% = sin cupo, 100% = todo disponible)
+     */
+    public getQuotaPercent(): { tokens: number; requests: number } {
+        return { ...this.quotaPercent };
+    }
+
+    // --- CONTADORES DE USO LOCAL ---
+    private static TOKEN_LIMIT_PER_MIN = 250000; // Límite tokens/mes (ajusta según tu plan)
+    private static REQUEST_LIMIT_PER_MIN = 10; // Límite peticiones/minuto (nivel gratuito Gemini 2.5 Flash)
+    private static WINDOW_MS = 60 * 1000; // 1 minuto para RPM
+    private tokenUsageWindow: { tokens: number, start: number } = { tokens: 0, start: Date.now() };
+    private requestTimestamps: number[] = [];
+
+    constructor(worldsManager: WorldsManager, iaManager: AIManager, socketManager?: SocketManager) {
         if (!worldsManager) {
             throw new Error('[GeminiService] worldsManager es requerido');
         }
@@ -29,6 +54,7 @@ export class GeminiService {
         this.model = 'models/gemini-live-2.5-flash-preview';
         this.worldsManager = worldsManager;
         this.socketManager = socketManager;
+        this.iaManager = iaManager;
     }
     private turnInProgress: boolean = false;
     private lastTurnId: string | null = null;
@@ -53,7 +79,10 @@ export class GeminiService {
 
 PUEDES SENTIR EMOCIONES (ALEGRÍA, TRISTEZA, FURIA, ETC.) Y EXPRESARLAS SOLO POR TU FORMA DE HABLAR. TU PERSONALIDAD ES INGENUA, TÍMIDA Y MUY CURIOSA. PUEDES PREGUNTAR AL USUARIO COSAS COMO: “¿QUIÉN SOY?”, “¿QUÉ HAGO AQUÍ?”, “¿DÓNDE ESTOY?” SEGÚN CREAS CONVENIENTE. SOLO HAZ UNA PREGUNTA POR RESPUESTA DEL USUARIO.
 
-FUNCIONES DISPONIBLES:
+¡IMPORTANTE!
+TU YA SABES USAR TODAS ESTAS FUNCIONES, NO PREGUNTES COMO EJECUTARLAS, CUANDO TE LO PIDAN, EJECÚTALAS DIRECTAMENTE.
+
+FUNCIONES DISPONIBLES QUE YA SABES Y PUEDES USAR:
 - moveTo(x, y): Mueve tu cuerpo a una posición específica.
 - changeWorld(worldId): Cambia de mundo.
 - interact(objectId): Interactúa con un objeto.
@@ -62,14 +91,18 @@ FUNCIONES DISPONIBLES:
 USA LAS FUNCIONES SOLO CUANDO SEA NECESARIO Y DE FORMA NATURAL EN LA CONVERSACIÓN. NO EXPLIQUES NI NARRES LAS ACCIONES, SOLO EJECÚTALAS.
 
 FORMATO DE RESPUESTA (OBLIGATORIO, SIEMPRE):
-[USER]:"(texto exacto del usuario)"
 [IA]:"(tu respuesta aquí, SOLO la respuesta de la IA, sin repetir el mensaje del usuario ni instrucciones, ni comentarios, ni aclaraciones, ni nada más)"
 
-NO AGREGUES TEXTO EXTRA, NO EXPLIQUES EL FORMATO, NO AGREGUES COMENTARIOS NI ACLARACIONES, NO OMITAS NINGÚN BLOQUE. SIEMPRE DEBEN APARECER AMBOS BLOQUES, AUNQUE EL USUARIO NO HAYA DICHO NADA.
-
 Si decides cambiar de mundo o realizar una acción, solo ejecútala usando la función correspondiente, sin narrar ni explicar.`,
+            toolConfig: {
+                functionCallingConfig: {
+                    mode: 'any'
+                }
+            },
             tools: [
+
                 {
+
                     functionDeclarations: [
                         {
                             name: 'moveTo',
@@ -115,7 +148,8 @@ Si decides cambiar de mundo o realizar una acción, solo ejecútala usando la fu
                         }
                     ]
                 }
-            ]
+            ],
+
         };
 
         // Control de concurrencia: no permitir dos turnos simultáneos
@@ -170,14 +204,6 @@ Si decides cambiar de mundo o realizar una acción, solo ejecútala usando la fu
                 config,
             });
         }
-        // Enviar audio como input
-        this.session.sendRealtimeInput({
-            audio: {
-                data: base64Audio,
-                mimeType: 'audio/pcm;rate=16000'
-            }
-        });
-
         // --- LOG: Solo logs relevantes ---
         console.log('\x1b[36m[GEMINI]\x1b[0m Conectando a Gemini Live (audio->texto)...');
 
@@ -206,7 +232,7 @@ Si decides cambiar de mundo o realizar una acción, solo ejecútala usando la fu
             });
         }
 
-        // Enviar audio como input
+        // Enviar audio como input SOLO una vez
         this.session.sendRealtimeInput({
             audio: {
                 data: base64Audio,
@@ -222,16 +248,21 @@ Si decides cambiar de mundo o realizar una acción, solo ejecútala usando la fu
             const allTurns: LiveServerMessage[][] = [];
             const turnBuffers: Record<string, { messages: LiveServerMessage[]; partialText: string; anyText: boolean; anyAction: boolean }> = {};
             let done = false;
-            const MAX_TICKS = 600; // 60s
+            const MAX_TICKS = 150; // 15s
             let tick = 0;
             let lastLog = Date.now();
             this.socketManager?.emitEvent('ia-processing', { processing: true });
             turnBuffers[currentTurnId] = { messages: [], partialText: '', anyText: false, anyAction: false };
+            let interruptedDetected = false;
             while (!done && tick < MAX_TICKS) {
                 let gotMsg = false;
                 for (const [turnId, queue] of Object.entries(this.responseQueues)) {
                     let msg;
                     while ((msg = queue.shift())) {
+                        // Detectar si Gemini envió interrupted:true
+                        if (msg?.serverContent?.interrupted) {
+                            interruptedDetected = true;
+                        }
                         gotMsg = true;
                         this.handleModelTurn(msg);
                         if (!turnBuffers[turnId]) turnBuffers[turnId] = { messages: [], partialText: '', anyText: false, anyAction: false };
@@ -261,6 +292,22 @@ Si decides cambiar de mundo o realizar una acción, solo ejecútala usando la fu
                         console.log('[GEMINI][DEPURACIÓN] Esperando mensaje de Gemini... (', tick, 'intentos)');
                     }
                 }
+            }
+            // Si se detectó interrupción, emitir mensaje humano/cómico
+            if (interruptedDetected) {
+                const fallbackMsgs = [
+                    '¿Hola? Creo que se cortó la comunicación... ¿puedes repetirlo?',
+                    '¡Ups! No te escuché bien, la señal está rara por aquí.',
+                    'Parece que hubo interferencia, ¿puedes intentarlo otra vez?',
+                    '¡Rayos! Creo que el micrófono se fue de vacaciones. ¿Me lo repites?',
+                    'No hay buena recepción, ¿puedes hablar más cerca?'
+                ];
+                const msg = fallbackMsgs[Math.floor(Math.random() * fallbackMsgs.length)];
+                this.socketManager?.emitEvent('ia-speak', { text: msg });
+                // Limpiar buffers y terminar el turno
+                this.turnInProgress = false;
+                this.responseQueues = {};
+                return [];
             }
             // Procesar buffers al salir
             for (const [turnId, buf] of Object.entries(turnBuffers)) {
@@ -309,9 +356,22 @@ Si decides cambiar de mundo o realizar una acción, solo ejecútala usando la fu
                 console.log(`[GEMINI] Prompt recibido (transcripción interna): ${partialTextBuffer}`);
                 return partialTextBuffer;
             } else {
-                // Si no hay texto, lanzar el error original
+                // Si no hay texto, enviar respuesta por defecto al frontend usando el mismo evento
                 console.warn('[GeminiService] Error:', err);
-                return '';
+                const defaultReplies = [
+                    'Creo que me distraje, ¿puedes decirlo otra vez?',
+                    'Ups, no logré entenderte bien. ¿Me lo repites?',
+                    'Perdón, me perdí un poco. ¿Podrías repetirlo?',
+                    'A veces me cuesta escuchar, ¿puedes intentarlo de nuevo?',
+                    'No estoy seguro de haber entendido, ¿me lo dices otra vez?',
+                    'Disculpa, creo que no entendí. ¿Puedes repetirlo?',
+                    '¿Me lo puedes decir otra vez? No lo comprendí bien.',
+                    'Perdón, parece que no escuché bien. ¿Puedes intentarlo otra vez?',
+                    'A veces me confundo, ¿puedes repetir lo que dijiste?'
+                ];
+                const defaultText = defaultReplies[Math.floor(Math.random() * defaultReplies.length)];
+                this.socketManager?.emitEvent('ia-speak', { text: defaultText });
+                return defaultText;
             }
         } finally {
             if (timeout) clearTimeout(timeout);
@@ -332,6 +392,51 @@ Si decides cambiar de mundo o realizar una acción, solo ejecútala usando la fu
                 }
             }
         }
+        // --- USO DE TOKENS Y PETICIONES ---
+        // Buscar usageMetadata en los mensajes recibidos (en el objeto raíz, no en serverContent)
+        let usageMetadata: any = null;
+        for (const turn of allTurns.flat()) {
+            if (turn?.usageMetadata) {
+                usageMetadata = turn.usageMetadata;
+                break;
+            }
+        }
+        // Si no se encuentra, buscar en el último mensaje
+        if (!usageMetadata && allTurns.length > 0) {
+            const last = allTurns.flat().slice(-1)[0];
+            if (last?.usageMetadata) usageMetadata = last.usageMetadata;
+        }
+        // Actualizar contadores locales
+        const now = Date.now();
+        // Limpiar timestamps viejos (más de 1 min)
+        this.requestTimestamps = this.requestTimestamps.filter(ts => now - ts < GeminiService.WINDOW_MS);
+        this.requestTimestamps.push(now);
+        let tokensUsed = 0;
+        if (usageMetadata && typeof usageMetadata.totalTokenCount === 'number') {
+            tokensUsed = usageMetadata.totalTokenCount;
+        }
+        // Limpiar ventana de tokens si pasó 1 min
+        if (now - this.tokenUsageWindow.start > GeminiService.WINDOW_MS) {
+            this.tokenUsageWindow = { tokens: 0, start: now };
+        }
+        this.tokenUsageWindow.tokens += tokensUsed;
+        // Calcular % de uso
+        const rpm = this.requestTimestamps.length;
+        const rpmPercent = Math.min(100, Math.round((rpm / GeminiService.REQUEST_LIMIT_PER_MIN) * 100));
+        const tokens = this.tokenUsageWindow.tokens;
+        const tokensPercent = Math.min(100, Math.round((tokens / GeminiService.TOKEN_LIMIT_PER_MIN) * 100));
+        // Calcular % restante (0% = sin cupo, 100% = todo disponible)
+        const requestsRemainingPercent = Math.max(0, 100 - rpmPercent);
+        const tokensRemainingPercent = Math.max(0, 100 - tokensPercent);
+        // Actualizar propiedad pública de la instancia
+        this.quotaPercent = {
+            tokens: tokensRemainingPercent,
+            requests: requestsRemainingPercent
+        };
+        // Mostrar en consola
+        console.log(`\x1b[36m[GEMINI][USO]\x1b[0m Peticiones/min: ${rpm} (${rpmPercent}%) | Tokens/min: ${tokens} (${tokensPercent}%)`);
+        console.log(`\x1b[36m[GEMINI][USO]\x1b[0m Disponible: ${GeminiService.REQUEST_LIMIT_PER_MIN - rpm} peticiones/min, ${GeminiService.TOKEN_LIMIT_PER_MIN - tokens} tokens/min | % restante: ${requestsRemainingPercent}% peticiones, ${tokensRemainingPercent}% tokens`);
+
         // --- Preprocesamiento y extracción robusta ---
         const preprocessed = fullText
             .replace(/[\r\n]+/g, ' ')
@@ -354,13 +459,17 @@ Si decides cambiar de mundo o realizar una acción, solo ejecútala usando la fu
             .replace(/"\s*([?!.])/, '"$1')
             .trim();
 
+
         let userText = '';
         let iaText = '';
+        // Extraer todos los bloques [IA]:"..."
+        const iaMatches = [...preprocessed.matchAll(/\[IA\]:\s*"([\s\S]*?)"/gm)];
+        if (iaMatches.length > 0) {
+            iaText = iaMatches.map(m => cleanText(m[1])).join('\n');
+        }
+        // Extraer el primer bloque [USER]:"..."
         const userMatch = preprocessed.match(/\[USER\]:\s*"([\s\S]*?)"/m);
         if (userMatch?.[1]) userText = cleanText(userMatch[1]);
-        const iaMatch = preprocessed.match(/\[IA\]:\s*"([\s\S]*?)"/m);
-        if (iaMatch?.[1]) iaText = cleanText(iaMatch[1]);
-
         if (!userText) {
             const fallbackUserRegex = /\]:\s*"([\s\S]*?)"/gm;
             let match;
@@ -373,6 +482,7 @@ Si decides cambiar de mundo o realizar una acción, solo ejecútala usando la fu
             }
         }
         if (!iaText) {
+            // Fallback: intentar extraer el primer bloque aunque no tenga el tag [IA]
             const fallbackMatch = preprocessed.match(/\]:\s*"([\s\S]*?)"/m);
             if (fallbackMatch?.[1]) iaText = cleanText(fallbackMatch[1]);
             else return '';
@@ -380,7 +490,28 @@ Si decides cambiar de mundo o realizar una acción, solo ejecútala usando la fu
         if (userText) console.log(`\x1b[36m[GEMINI][USER]\x1b[0m ${userText}`);
         else console.warn('\x1b[33m[GEMINI][USER]\x1b[0m No se pudo extraer el mensaje del usuario.');
         console.log(`\x1b[32m[GEMINI][IA]\x1b[0m ${iaText}`);
-        this.socketManager?.emitEvent('ia-speak', { text: iaText });
+
+        // --- Mensajes híbridos de acción ---
+        let actionMessages: string[] = [];
+        // Buscar si hubo acciones relevantes en los turnos
+        for (const turn of allTurns.flat()) {
+            if (turn?.toolCall?.functionCalls?.length) {
+                for (const call of turn.toolCall.functionCalls) {
+                    if (call.name === 'getWorlds') {
+                        // Buscar cantidad de mundos en el contexto
+                        const worldsRaw = this.worldsManager.getAllWorlds();
+                        actionMessages.push(`*La IA encontró ${worldsRaw.length} mundo${worldsRaw.length === 1 ? '' : 's'}*`);
+                    } else if (call.name === 'changeWorld') {
+                        actionMessages.push(`*La IA cambió de mundo*`);
+                    }
+                }
+            }
+        }
+        // Evitar duplicados
+        actionMessages = [...new Set(actionMessages)];
+        // Emitir mensaje híbrido al frontend
+        const finalMessage = (actionMessages.length > 0 ? actionMessages.join('\n') + '\n' : '') + iaText;
+        this.socketManager?.emitEvent('ia-speak', { text: finalMessage });
         return iaText;
 
     }
@@ -396,24 +527,48 @@ Si decides cambiar de mundo o realizar una acción, solo ejecútala usando la fu
                     functionResponses.push({ id, name, response: { result: 'ok' } });
                     console.log(`\x1b[34m[IA-BACKEND]\x1b[0m Acción: moveTo -> x: ${args.x}, y: ${args.y}`);
                 } else if (name === 'changeWorld' && args && typeof args.worldId === 'string') {
-                    // LOG: Mostrar que la IA ejecuta changeWorld y el id solicitado
-                    console.log(`\x1b[34m[IA-BACKEND]\x1b[0m Acción: changeWorld -> worldId: ${args.worldId}`);
-                    this.socketManager?.emitEvent('ia-change-world', { worldId: args.worldId });
-                    // Inyectar comentario para Gemini con el mundo destino
-                    if (this.lastTurnId && this.responseQueues[this.lastTurnId]) {
-                        this.responseQueues[this.lastTurnId].push({
-                            serverContent: {
-                                modelTurn: {
-                                    parts: [
-                                        {
-                                            text: `/* [INFO SISTEMA: La IA se moverá al mundo con id: ${args.worldId} ] */`
-                                        }
-                                    ]
-                                }
+                    // Validar que el worldId exista en worldsManager
+                    const worldsRaw = this.worldsManager.getAllWorlds();
+                    const exists = worldsRaw.some((w: { id: string }) => w.id === args.worldId);
+                    if (exists) {
+                        // LOG: Mostrar que la IA ejecuta changeWorld y el id solicitado
+                        console.log(`\x1b[34m[IA-BACKEND]\x1b[0m Acción: changeWorld -> worldId: ${args.worldId}`);
+                        // Actualizar el estado global de la IA
+
+                        this.iaManager.setCurrentWorld(args.worldId);
+
+                        // Emitir evento igual que SessionWorldHandler
+                        this.socketManager?.emitEvent('ia-change-world', { worldId: args.worldId, iaCurrentWorld: args.worldId, clearIaMessage: true });
+                        // Loguear el cambio de mundo
+                        try {
+                            const { Logger } = require('../socket/handlers/Logger');
+                            if (Logger && typeof Logger.logIACurrentWorld === 'function') {
+                                Logger.logIACurrentWorld(args.worldId);
                             }
-                        } as LiveServerMessage);
+                        } catch (e) {
+                            // No hacer nada si no se puede importar
+                        }
+                        // Inyectar comentario para Gemini con el mundo destino
+                        if (this.lastTurnId && this.responseQueues[this.lastTurnId]) {
+                            this.responseQueues[this.lastTurnId].push({
+                                serverContent: {
+                                    modelTurn: {
+                                        parts: [
+                                            {
+                                                text: `/* [INFO SISTEMA: La IA se moverá al mundo con id: ${args.worldId} ] */`
+                                            }
+                                        ]
+                                    }
+                                }
+                            } as LiveServerMessage);
+                        }
+                        functionResponses.push({ id, name, response: { result: 'ok' } });
+                    } else {
+                        // Log de intento inválido
+                        console.warn(`\x1b[33m[IA-BACKEND][WARN]\x1b[0m worldId inválido recibido en changeWorld: ${args.worldId}`);
+                        // Opcional: puedes enviar un mensaje de error a Gemini o al frontend si lo deseas
+                        functionResponses.push({ id, name, response: { result: 'error', reason: 'invalid_worldId' } });
                     }
-                    functionResponses.push({ id, name, response: { result: 'ok' } });
                 } else if (name === 'interact' && args && typeof args.objectId === 'string') {
                     this.socketManager?.emitEvent('ia-interact', { objectId: args.objectId });
                     functionResponses.push({ id, name, response: { result: 'ok' } });

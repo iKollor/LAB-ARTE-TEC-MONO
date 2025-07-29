@@ -43,7 +43,7 @@ export class IAMovementScheduler {
 
             // Log de movimiento IA dentro del mundo
             const currentWorld = this.aiManager.getState().currentWorld;
-            Logger.logIAMoveInWorld(currentWorld, position);
+            Logger.logIAMove(currentWorld, position);
             this.io?.emit('ia-move', { position });
         }, 3000);
     }

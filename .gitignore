@@ -40,3 +40,7 @@ yarn-error.log*
 .qodo
 .astro
 .vscode
+
+cert.pem
+key.pem
+locahost+*.pem

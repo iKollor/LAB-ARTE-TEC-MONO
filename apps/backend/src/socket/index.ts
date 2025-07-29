@@ -19,8 +19,8 @@ export class SocketManager {
     private iaHasBorn = false;
     private iaMovementScheduler: IAMovementScheduler;
     private sessionWorldHandler: SessionWorldHandler;
-    private iaHandler: IAHandler;
-    private micHandler: MicHandler;
+    iaHandler: IAHandler;
+    micHandler: MicHandler;
 
 
     constructor(httpServer: any, worldsManager: WorldsManager, aiManager: AIManager) {
@@ -65,8 +65,6 @@ export class SocketManager {
             this.io,
             this.worldsManager,
             this.aiManager,
-            iaHasBornRef,
-            this.iaMovementScheduler
         );
         this.micHandler = new MicHandler(
             this.io,
@@ -74,7 +72,6 @@ export class SocketManager {
         );
         this.setupSocketEvents();
     }
-
 
     emitEvent(event: string, data: any) {
         this.io.emit(event, data);

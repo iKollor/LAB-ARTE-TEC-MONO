@@ -191,7 +191,12 @@ export class MicrophoneController {
         const formData = new FormData();
         formData.append("file", audioBlob, "audio/webm");
         try {
-            const response = await fetch("http://localhost:3000/api/audio-upload", {
+            // Detecta el protocolo y host actual para la URL del backend
+            const protocol = window.location.protocol;
+            const host = window.location.hostname;
+            const port = 3000; // Cambia si tu backend usa otro puerto
+            const url = `${protocol}//${host}:${port}/api/audio-upload`;
+            const response = await fetch(url, {
                 method: "POST",
                 body: formData,
                 headers: { "x-world-id": worldId },

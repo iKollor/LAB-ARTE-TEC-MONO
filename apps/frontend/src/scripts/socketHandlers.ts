@@ -73,8 +73,7 @@ export class SocketHandlers {
             // Mostrar SIEMPRE el mensaje para depuración, aunque el mundo no coincida
             if (this.iaState.currentWorld !== currentWorldId) {
                 console.warn('[FRONT][EVENT] ia-speak ignorado por mundo:', this.iaState.currentWorld, currentWorldId);
-                mostrarMensajeIA(`[DEBUG][MUNDO NO COINCIDE] ${payload.text}`, true);
-                this.microphoneController.enableMic();
+                mostrarMensajeIA(`[IA EN OTRO MUNDO] ${payload.text}`, true);
                 return;
             }
             mostrarMensajeIA(payload.text, true);
@@ -102,6 +101,11 @@ export class SocketHandlers {
             if (this.pixiManager && payload && payload.position) {
                 this.pixiManager.setIATargetPosition(payload.position);
             }
+        });
+        // Listener para errores de IA
+        socket.on("ia-error", (data: { error: string }) => {
+            console.error("[FRONT][IA-ERROR]", data.error);
+            mostrarMensajeIA(`[ERROR IA] ${data.error}`, true);
         });
     }
 

@@ -65,7 +65,7 @@ export class PixiAppManager {
   /**
    * Actualiza la visibilidad de la IA usando solo currentWorld
    */
-  private _updateIAVisibility() {
+  _updateIAVisibility() {
     if (!this.iaCharacter) return;
     const userWorldId = this.worldController.getCurrentWorldId();
     const iaWorldId = this.iaState.currentWorld;

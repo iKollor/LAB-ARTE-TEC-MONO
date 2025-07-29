@@ -7,13 +7,14 @@ import type { GeminiService } from '../services/geminiService';
 import type { AIManager } from '../services/aiManager';
 import path from "path";
 import fs from "fs";
+import { SocketManager } from "../socket";
 
 // Tipado para dependencias inyectadas
 interface AudioUploadRouterDeps {
     worldsManager: WorldsManager;
     geminiService: GeminiService;
     aiManager: AIManager;
-    socketManager: { emitEvent: (event: string, data: any) => void };
+    socketManager: SocketManager;
 }
 
 export function createAudioUploadRouter({ worldsManager, geminiService, aiManager, socketManager }: AudioUploadRouterDeps) {
@@ -81,7 +82,9 @@ export function createAudioUploadRouter({ worldsManager, geminiService, aiManage
 
             // --- Procesar con Gemini ---
             try {
+                const worldId = req.headers['x-world-id'] || req.body?.worldId || 'unknown';
                 const t0 = Date.now();
+                console.log(`\x1b[35m[AUDIO-UPLOAD][REQ]\x1b[0m Nueva petición recibida a /api/audio-upload | worldId: ${worldId} | timestamp: ${t0}`);
                 const text = await geminiService.sendAudioToGeminiLiveText(wavPath);
                 const t1 = Date.now();
                 setMicActiveState(false);
