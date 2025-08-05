@@ -1,8 +1,8 @@
 @echo off
 setlocal enabledelayedexpansion
 
-set CERT_FILE=cert.pem
-set KEY_FILE=key.pem
+set CERT_FILE=certs/cert.pem
+set KEY_FILE=certs/key.pem
 set IP_LOCAL=
 
 echo 🔐 Generador de certificados HTTPS con mkcert
